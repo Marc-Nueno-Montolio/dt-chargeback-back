@@ -61,6 +61,8 @@ def get_hosts():
         "entitySelector": "type(HOST)", 
         "pageSize": 4000,
         "fields": "tags, properties.monitoringMode, properties.physicalMemory, properties.state",
+        "from": "-30d",
+        "to": "now"
     }
     headers = {
         "Authorization": f"Api-Token {TOKEN}",
@@ -234,8 +236,7 @@ def query_host_full_stack_usage(dg=None, data_from="-30d", data_to="now"):
                 or(
                     in("dt.entity.host",entitySelector("type(HOST),tag(~"DG\:{dg}~")")),
                     in("dt.entity.host",entitySelector("type(host),tag(~"DG:{dg}~")"))
-                ),
-                in("dt.entity.host",entitySelector("type(host),state(~"RUNNING~")"))
+                )
             )
         )
         :fold(sum)
@@ -256,8 +257,7 @@ def query_host_infra_usage(dg=None, data_from="-30d", data_to="now"):
                 or(
                     in("dt.entity.host",entitySelector("type(HOST),tag(~"DG\:{dg}~")")),
                     in("dt.entity.host",entitySelector("type(host),tag(~"DG:{dg}~")"))
-                ),
-                in("dt.entity.host",entitySelector("type(host),state(~"RUNNING~")"))
+                )
             )
         )
         :fold(sum)
@@ -363,6 +363,160 @@ def query_3rd_party_monitor_usage(dg=None, data_from="-30d", data_to="now"):
                     in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~"),tag(~"DG\:{dg}~")")),
                     in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~"),tag(~"DG:{dg}~")"))
                 )
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+
+
+def query_unassigned_host_full_stack_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.full_stack_monitoring.usage_per_host
+        :filter(
+            not(and(
+                or(
+                    in("dt.entity.host",entitySelector("type(HOST),tag(~"DG\:~")")),
+                    in("dt.entity.host",entitySelector("type(host),tag(~"DG:~")"))
+                )
+            ))
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_host_infra_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.infrastructure_monitoring.usage_per_host
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.host",entitySelector("type(HOST),tag(~"DG\:~")")),
+                    in("dt.entity.host",entitySelector("type(host),tag(~"DG:~")"))
+                ))
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_real_user_monitoring_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.real_user_monitoring.web.session.usage_by_app
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.application",entitySelector("type(APPLICATION),tag(~"DG\:~")")),
+                    in("dt.entity.application",entitySelector("type(APPLICATION),tag(~"DG:~")"))
+                )),
+                in("dt.entity.application",entitySelector("type(APPLICATION)"))
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_real_user_monitoring_with_sr_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.real_user_monitoring.web.session_with_replay.usage_by_app
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.application",entitySelector("type(APPLICATION),tag(~"DG\:~")")),
+                    in("dt.entity.application",entitySelector("type(APPLICATION),tag(~"DG:~")"))
+                )),
+                in("dt.entity.application",entitySelector("type(APPLICATION)"))
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_browser_monitor_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.synthetic.actions.usage_by_browser_monitor
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.synthetic_test",entitySelector("type(~"SYNTHETIC_TEST~"),tag(~"DG:~")")),
+                    in("dt.entity.synthetic_test",entitySelector("type(~"SYNTHETIC_TEST~"),tag(~"DG\:~")"))
+                )),
+                in("dt.entity.synthetic_test",entitySelector("type(~"SYNTHETIC_TEST~")"))
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_http_monitor_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.synthetic.requests.usage_by_http_monitor
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.http_check",entitySelector("type(~"HTTP_CHECK~"),tag(~"DG:~")")),
+                    in("dt.entity.http_check",entitySelector("type(~"HTTP_CHECK~"),tag(~"DG\:~")"))
+                )),
+                in("dt.entity.http_check",entitySelector("type(~"HTTP_CHECK~")"))
+            )
+        )
+        :fold(sum)
+    """
+    data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
+    result = []
+    for datapoint in data:
+        result.append({'dt_id': datapoint['dimensions'][0],
+                       'value': datapoint['values'][0]}
+                    )
+    return result
+
+def query_unassigned_3rd_party_monitor_usage(data_from="-30d", data_to="now"):
+    metricSelector = rf"""
+        builtin:billing.synthetic.external.usage_by_third_party_monitor
+        :filter(
+            and(
+                not(or(
+                    in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~"),tag(~"DG\:~")")),
+                    in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~"),tag(~"DG:~")"))
+                )),
+                in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~")"))
             )
         )
         :fold(sum)

@@ -1,6 +1,6 @@
 from . import models
 from .database import engine, get_db
-from .routes import topology, chargeback
+from .routes import topology, chargeback, crud
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -18,5 +18,5 @@ app.add_middleware(
 )
 
 app.include_router(chargeback.router, tags=["Chargeback"])
-app.include_router(topology.router, tags=["Topology"])
-
+app.include_router(topology.router, tags=["Topology Refresh"])
+app.include_router(crud.router, tags=["Topology Query"])

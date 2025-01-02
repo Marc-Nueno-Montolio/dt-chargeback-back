@@ -83,10 +83,6 @@ async def generate_report_background(
             report.data = json.dumps(result)
             report.last_updated = datetime.utcnow()
             
-            # Debug output to file
-            with open('result.txt', 'w') as f:
-                f.write(str(result))
-                
             db.commit()
             report_status = "idle"
 

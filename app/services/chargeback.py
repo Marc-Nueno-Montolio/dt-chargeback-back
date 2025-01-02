@@ -4,6 +4,15 @@ import logging
 from sqlalchemy.orm import Session
 from ..models import DG, IS, Host, Application, Synthetic
 from . import usage as usage_svc
+from ..dynatrace import (
+    query_unassigned_host_full_stack_usage,
+    query_unassigned_host_infra_usage,
+    query_unassigned_real_user_monitoring_usage,
+    query_unassigned_real_user_monitoring_with_sr_usage,
+    query_unassigned_browser_monitor_usage,
+    query_unassigned_http_monitor_usage,
+    query_unassigned_3rd_party_monitor_usage
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -53,6 +62,11 @@ class ChargebackReport:
                     'usage': {usage_type: 0.0 for usage_type in self.usage_types},
                     'entities': {'hosts': 0, 'applications': 0, 'synthetics': 0},
                     'managed_hosts': 0
+                },
+                'unassigned_totals': {
+                    'usage': {usage_type: 0.0 for usage_type in self.usage_types},
+                    'entities': {'hosts': 0, 'applications': 0, 'synthetics': 0},
+                    'managed_hosts': 0
                 }
             }
 
@@ -93,7 +107,7 @@ class ChargebackReport:
                 'name': 'Unassigned',
                 'data': unassigned_dg
             })
-            self._update_report_totals(report, unassigned_dg)
+            self._update_unassigned_totals(report, unassigned_dg)
 
             logger.info("Report generation completed successfully")
             return report
@@ -109,6 +123,14 @@ class ChargebackReport:
         for entity_type in ['hosts', 'applications', 'synthetics']:
             report['totals']['entities'][entity_type] += dg_data['totals']['entities'][entity_type]
         report['totals']['managed_hosts'] += dg_data['totals']['managed_hosts']
+
+    def _update_unassigned_totals(self, report: Dict, dg_data: Dict):
+        """Helper method to update unassigned totals"""
+        for usage_type in self.usage_types:
+            report['unassigned_totals']['usage'][usage_type] += dg_data['totals']['usage'][usage_type]
+        for entity_type in ['hosts', 'applications', 'synthetics']:
+            report['unassigned_totals']['entities'][entity_type] += dg_data['totals']['entities'][entity_type]
+        report['unassigned_totals']['managed_hosts'] += dg_data['totals']['managed_hosts']
 
     async def _collect_usage_data(self, dgs: List[str]) -> Dict:
         """
@@ -216,20 +238,78 @@ class ChargebackReport:
             }
         }
 
-        # Process unassigned usage
-        for usage_type, usage_values in usage_data.items():
-            for dt_id, value in usage_values.items():
-                entity_type = self._determine_entity_type(usage_type)
-                if entity_type and dt_id not in self.assigned_entities[entity_type] and value > 0:
-                    logger.debug(f"Found unassigned {entity_type} with ID: {dt_id}")
-                    unassigned_report['unassigned_entities'][entity_type].append({
-                        'dt_id': dt_id,
-                        'usage': {usage_type: value}
-                    })
-                    self.assigned_entities[entity_type].add(dt_id)
+        # Query unassigned entities directly from Dynatrace
+        unassigned_fullstack = query_unassigned_host_full_stack_usage()
+        unassigned_infra = query_unassigned_host_infra_usage()
+        unassigned_rum = query_unassigned_real_user_monitoring_usage()
+        unassigned_rum_sr = query_unassigned_real_user_monitoring_with_sr_usage()
+        unassigned_browser = query_unassigned_browser_monitor_usage()
+        unassigned_http = query_unassigned_http_monitor_usage()
+        unassigned_3rd_party = query_unassigned_3rd_party_monitor_usage()
+
+        # Process unassigned hosts
+        for host in unassigned_fullstack + unassigned_infra:
+            if host['dt_id'] not in self.assigned_entities['hosts']:
+                # Query host from database
+                db_host = self.db.query(Host).filter(Host.dt_id == host['dt_id']).first()
+                host_data = {
+                    'id': db_host.id if db_host else None,
+                    'name': db_host.name if db_host else 'Unknown',
+                    'dt_id': host['dt_id'],
+                    'usage': {
+                        'fullstack': next((h['value'] for h in unassigned_fullstack if h['dt_id'] == host['dt_id']), 0.0),
+                        'infra': next((h['value'] for h in unassigned_infra if h['dt_id'] == host['dt_id']), 0.0)
+                    }
+                }
+                unassigned_report['unassigned_entities']['hosts'].append(host_data)
+                self.assigned_entities['hosts'].add(host['dt_id'])
+                for usage_type, value in host_data['usage'].items():
                     unassigned_report['unassigned_entities']['usage'][usage_type] += value
                     unassigned_report['totals']['usage'][usage_type] += value
-                    unassigned_report['totals']['entities'][entity_type] += 1
+                unassigned_report['totals']['entities']['hosts'] += 1
+
+        # Process unassigned applications
+        for app in unassigned_rum + unassigned_rum_sr:
+            if app['dt_id'] not in self.assigned_entities['applications']:
+                # Query application from database
+                db_app = self.db.query(Application).filter(Application.dt_id == app['dt_id']).first()
+                app_data = {
+                    'id': db_app.id if db_app else None,
+                    'name': db_app.name if db_app else 'Unknown',
+                    'dt_id': app['dt_id'],
+                    'usage': {
+                        'rum': next((a['value'] for a in unassigned_rum if a['dt_id'] == app['dt_id']), 0.0),
+                        'rum_with_sr': next((a['value'] for a in unassigned_rum_sr if a['dt_id'] == app['dt_id']), 0.0)
+                    }
+                }
+                unassigned_report['unassigned_entities']['applications'].append(app_data)
+                self.assigned_entities['applications'].add(app['dt_id'])
+                for usage_type, value in app_data['usage'].items():
+                    unassigned_report['unassigned_entities']['usage'][usage_type] += value
+                    unassigned_report['totals']['usage'][usage_type] += value
+                unassigned_report['totals']['entities']['applications'] += 1
+
+        # Process unassigned synthetics
+        for synthetic in unassigned_browser + unassigned_http + unassigned_3rd_party:
+            if synthetic['dt_id'] not in self.assigned_entities['synthetics']:
+                # Query synthetic from database
+                db_synthetic = self.db.query(Synthetic).filter(Synthetic.dt_id == synthetic['dt_id']).first()
+                synthetic_data = {
+                    'id': db_synthetic.id if db_synthetic else None,
+                    'name': db_synthetic.name if db_synthetic else 'Unknown',
+                    'dt_id': synthetic['dt_id'],
+                    'usage': {
+                        'browser_monitor': next((s['value'] for s in unassigned_browser if s['dt_id'] == synthetic['dt_id']), 0.0),
+                        'http_monitor': next((s['value'] for s in unassigned_http if s['dt_id'] == synthetic['dt_id']), 0.0),
+                        '3rd_party_monitor': next((s['value'] for s in unassigned_3rd_party if s['dt_id'] == synthetic['dt_id']), 0.0)
+                    }
+                }
+                unassigned_report['unassigned_entities']['synthetics'].append(synthetic_data)
+                self.assigned_entities['synthetics'].add(synthetic['dt_id'])
+                for usage_type, value in synthetic_data['usage'].items():
+                    unassigned_report['unassigned_entities']['usage'][usage_type] += value
+                    unassigned_report['totals']['usage'][usage_type] += value
+                unassigned_report['totals']['entities']['synthetics'] += 1
 
         return unassigned_report
 
