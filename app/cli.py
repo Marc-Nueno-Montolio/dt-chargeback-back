@@ -68,7 +68,7 @@ def list_dgs():
 
 @cli.command()
 @click.argument('dgs', nargs=-1)
-def generate_chargeback(dgs):
+def generate_chargeback_single_dg(dgs):
     """Generate chargeback report for specified DGs"""
     if not dgs:
         click.echo("Please specify at least one DG")
@@ -83,6 +83,46 @@ def generate_chargeback(dgs):
         json.dump(report, f, indent=2)
     
     click.echo(f"Chargeback report generated for DGs: {', '.join(dgs)}")
+
+@cli.command()
+def generate_chargeback():
+    """Generate chargeback report for all DGs"""
+    db = next(get_db())
+    dgs  = db.query(DG).all()
+    dg_names_list = [dg.name for dg in dgs]
+    report_generator = ChargebackReport(db)
+    report = asyncio.run(report_generator.generate_report(dg_names_list))
+
+    # Save report to file
+    with open('chargeback_report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    click.echo(f"Chargeback report generated for all DGs")
+
+@cli.command()
+@click.argument('report_path', type=click.Path(exists=True))
+@click.argument('output_path', type=click.Path())
+def export_excel(report_path, output_path):
+    """
+    Generate Excel report from chargeback JSON report
+    
+    Args:
+        report_path: Path to the JSON chargeback report
+        output_path: Path where the Excel file should be saved
+    """
+    try:
+        # Load the JSON report
+        with open(report_path, 'r') as f:
+            report = json.load(f)
+            
+        # Create Excel export
+        from app.services.exports import ChargebackExcelExporter
+        exporter = ChargebackExcelExporter()
+        exporter.export_to_excel(report, output_path)
+        
+        click.echo(f"Excel report successfully generated at: {output_path}")
+    except Exception as e:
+        click.echo(f"Error generating Excel report: {str(e)}", err=True)
 
 if __name__ == "__main__":
     cli()
