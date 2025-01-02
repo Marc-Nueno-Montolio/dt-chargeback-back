@@ -6,7 +6,15 @@ from ..dynatrace import (
     query_real_user_monitoring_with_sr_usage,
     query_browser_monitor_usage,
     query_http_monitor_usage,
-    query_3rd_party_monitor_usage
+    query_3rd_party_monitor_usage,
+
+    query_unassigned_host_full_stack_usage,
+    query_unassigned_host_infra_usage,
+    query_unassigned_real_user_monitoring_usage,
+    query_unassigned_real_user_monitoring_with_sr_usage,
+    query_unassigned_browser_monitor_usage,
+    query_unassigned_http_monitor_usage,
+    query_unassigned_3rd_party_monitor_usage
 )
 from ..models import DG, IS, Host
 from datetime import datetime
@@ -26,6 +34,7 @@ import logging
 
 
 DT_QUERIES_THREADS = 30
+
 
 
 def retrieve_hosts_fullstack_usage(dgs=[]):
@@ -328,3 +337,68 @@ def retrieve_3rd_party_monitor_usage(dgs=[]):
                     future_to_dg[future] = dg
                     logger.debug(f'Started query for DG: {dg}')
     return results
+
+
+def retrieve_unassigned_hosts_fullstack_usage():
+    try:
+        result = query_unassigned_host_full_stack_usage("-30d", "now")
+        logger.info(f'Completed unassigned fullstack query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned fullstack query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_hosts_infra_usage():
+    try:
+        result = query_unassigned_host_infra_usage("-30d", "now")
+        logger.info(f'Completed unassigned infra query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned infra query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_real_user_monitoring_usage():
+    try:
+        result = query_unassigned_real_user_monitoring_usage("-30d", "now")
+        logger.info(f'Completed unassigned RUM query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned RUM query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_real_user_monitoring_with_sr_usage():
+    try:
+        result = query_unassigned_real_user_monitoring_with_sr_usage("-30d", "now")
+        logger.info(f'Completed unassigned RUM+SR query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned RUM+SR query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_browser_monitor_usage():
+    try:
+        result = query_unassigned_browser_monitor_usage("-30d", "now")
+        logger.info(f'Completed unassigned browser monitor query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned browser monitor query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_http_monitor_usage():
+    try:
+        result = query_unassigned_http_monitor_usage("-30d", "now")
+        logger.info(f'Completed unassigned HTTP monitor query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned HTTP monitor query generated an exception: {exc}')
+        return []
+
+def retrieve_unassigned_3rd_party_monitor_usage():
+    try:
+        result = query_unassigned_3rd_party_monitor_usage("-30d", "now")
+        logger.info(f'Completed unassigned 3rd party monitor query (found {len(result)} datapoints)')
+        return result
+    except Exception as exc:
+        logger.error(f'Unassigned 3rd party monitor query generated an exception: {exc}')
+        return []
+
