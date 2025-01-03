@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, Table, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from .database import Base
+from database import Base
 
 # Many-to-many association tables
 host_dgs = Table(
@@ -89,6 +89,7 @@ class IS(Base):
     name = Column(String, index=True)
     dg_id = Column(Integer, ForeignKey('dgs.id'))
     last_updated = Column(DateTime, default=datetime.utcnow)
+    managed = Column(Boolean, default=False)
     
     # Relationships
     dg = relationship("DG", back_populates="information_systems")

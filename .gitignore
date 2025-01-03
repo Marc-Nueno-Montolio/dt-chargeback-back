@@ -78,3 +78,7 @@ htmlcov/
 *.bak
 *.swp
 *~ 
+
+# Input and Output Files
+input/
+output/

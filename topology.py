@@ -1,22 +1,44 @@
-from ..database import get_db
-from ..dynatrace import get_host_tags, get_hosts, get_applications, get_synthetics
-from ..models import DG, IS, Host, Synthetic, Application
-from datetime import datetime
-from sqlalchemy.orm import Session, scoped_session, sessionmaker
-from typing import Dict, List
-import re
-import json
+from database import get_db
+from dynatrace import get_applications, get_host_tags, get_hosts, get_synthetics
+from settings import MANAGED_HOST_TAGS_INPUT_FILE, MANAGED_IS_NAMES_INPUT_FILE
+from models import Application, DG, Host, IS, Synthetic
+from settings import LOG_FORMAT, LOG_LEVEL, TOPOLOGY_REFRESH_THREADS
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from ..status import RefreshStatus
-import logging
+from datetime import datetime
+from enum import Enum
 from functools import partial
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 from threading import Lock
+from typing import Dict, List
+from typing import Literal
+import json
+import logging
+import re
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-TOPOLOGY_REFRESH_THREADS = 4
 
+
+class RefreshStatus(str, Enum):
+    IDLE = 'idle'
+    IN_PROGRESS = 'in_progress'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+
+# Global variable for managed hosts from input data
+managed_host_tags=[]
+with open(MANAGED_HOST_TAGS_INPUT_FILE, 'r') as file:
+        for line in file:
+            managed_host_tags.extend(line.strip().split(','))
+logger.debug(f"Managed Host Tags: {managed_host_tags}")
+
+managed_is_names=[]
+with open(MANAGED_IS_NAMES_INPUT_FILE, 'r') as file:
+        for line in file:
+            managed_is_names.extend(line.strip().split(','))   
+logger.debug(f"Managed IS Names: {managed_is_names}") 
+            
 # Global variable to track refresh status
 topology_refresh_status = {
     entity: {"status": RefreshStatus.IDLE, "last_update": None}
@@ -105,6 +127,8 @@ def refresh_hosts_task():
         hosts_data = get_hosts()
         db = next(get_db())
         
+        logger.info("Hosts entities retrieved successfully, processing relationships in DB (this can take a while)")
+        
         with db_lock:
             for host in hosts_data["entities"]:
                 update_host(db, host)
@@ -130,7 +154,7 @@ def refresh_applications_task():
     try:
         applications_data = get_applications()
         db = next(get_db())
-        
+        logger.info("Application entities retrieved successfully, processing relationships in DB (this can take a while)")
         with db_lock:
             for app in applications_data["entities"]:
                 update_application(db, app)
@@ -152,7 +176,7 @@ def refresh_synthetics_task():
     """Refresh synthetics data"""
     global topology_refresh_status
     topology_refresh_status["synthetics"]["status"] = RefreshStatus.IN_PROGRESS
-    
+    logger.info("Synthetic entities retrieved successfully, processing relationships in DB (this can take a while)")
     try:
         synthetics_data = get_synthetics()
         db = next(get_db())
@@ -183,18 +207,27 @@ def update_dg(db: Session, dg_value: str, dg_is_mapping: Dict):
         else:
             existing_dg = DG(name=dg_value, last_updated=datetime.utcnow())
             db.add(existing_dg)
-            
+            db.flush()  # Ensure existing_dg.id is available
+
         if dg_value in dg_is_mapping:
-            is_entries = [
-                IS(name=is_name, dg_id=existing_dg.id, last_updated=datetime.utcnow())
-                for is_name in dg_is_mapping[dg_value]
-                if not db.query(IS).filter(IS.name == is_name, IS.dg_id == existing_dg.id).first()
-            ]
+            is_entries = []
+            for is_name in dg_is_mapping[dg_value]:
+                if not db.query(IS).filter(IS.name == is_name, IS.dg_id == existing_dg.id).first():
+                    managed = False
+                    for name in managed_is_names:
+                        if is_name == name:
+                            managed = True
+                            break
+                    is_entries.append(IS(name=is_name, dg_id=existing_dg.id, last_updated=datetime.utcnow(), managed=managed))
             if is_entries:
                 db.bulk_save_objects(is_entries)
 
         db.commit()
         return True
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating DG: {e}")
+        return False
         
     except Exception as e:
         db.rollback()
@@ -208,10 +241,15 @@ def update_host(db: Session, host_data: dict):
         memory_gb = memory_bytes / (1024 * 1024 * 1024) if memory_bytes else None
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
         
+        managed = False
+        for tag in managed_host_tags:
+            if tag in str(host_data.get("tags", [])):
+                managed = True
+                break
         host_dict = {
             "dt_id": host_data.get("entityId"),
             "name": host_data.get("displayName"),
-            "managed": monitoring_mode == "FULL_STACK",
+            "managed": managed,
             "memory_gb": memory_gb,
             "monitoring_mode": monitoring_mode,
             "state": host_data.get("properties", {}).get("state", ""),

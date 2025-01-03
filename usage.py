@@ -1,5 +1,5 @@
-from ..database import get_db
-from ..dynatrace import (
+from database import get_db
+from dynatrace import (
     query_host_full_stack_usage,
     query_host_infra_usage,
     query_real_user_monitoring_usage,
@@ -7,7 +7,6 @@ from ..dynatrace import (
     query_browser_monitor_usage,
     query_http_monitor_usage,
     query_3rd_party_monitor_usage,
-
     query_unassigned_host_full_stack_usage,
     query_unassigned_host_infra_usage,
     query_unassigned_real_user_monitoring_usage,
@@ -16,24 +15,19 @@ from ..dynatrace import (
     query_unassigned_http_monitor_usage,
     query_unassigned_3rd_party_monitor_usage
 )
-from ..models import DG, IS, Host
+from models import DG, Host, IS
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from queue import Queue
+from settings import DT_QUERIES_THREADS
+from settings import LOG_FORMAT, LOG_LEVEL
 from sqlalchemy.orm import Session
 from typing import Dict
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from ..status import RefreshStatus
-
 import logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from queue import Queue
-import logging
-
-
-DT_QUERIES_THREADS = 30
 
 
 
@@ -66,7 +60,7 @@ def retrieve_hosts_fullstack_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} FS datapoints)')
+                    logger.info(f'FS usage query for {dg} Completed (found {len(result)} FS datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -110,7 +104,7 @@ def retrieve_hosts_infra_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} INFRA datapoints)')
+                    logger.info(f'INFRA usage query for {dg} Completed (found {len(result)} INFRA datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -153,7 +147,7 @@ def retrieve_real_user_monitoring_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} RUM datapoints)')
+                    logger.info(f'RUM usage query for {dg} Completed (found {len(result)} RUM datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -196,7 +190,7 @@ def retrieve_real_user_monitoring_with_sr_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} RUM+SR datapoints)')
+                    logger.info(f'RUM+SR usage query for {dg} Completed (found {len(result)} RUM+SR datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -239,7 +233,7 @@ def retrieve_browser_monitor_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} browser monitor datapoints)')
+                    logger.info(f'BROWSER MON. usage query for {dg} Completed (found {len(result)} browser monitor datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -282,7 +276,7 @@ def retrieve_http_monitor_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} HTTP monitor datapoints)')
+                    logger.info(f'HTTP MON. usage query for {dg} Completed (found {len(result)} HTTP monitor datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 
@@ -325,7 +319,7 @@ def retrieve_3rd_party_monitor_usage(dgs=[]):
                 try:
                     result = future.result()
                     results.extend(result)  # Concatenate results
-                    logger.info(f'{dg} Completed (found {len(result)} 3rd party monitor datapoints)')
+                    logger.info(f'EXT. MON. usage query for {dg} Completed (found {len(result)} 3rd party monitor datapoints)')
                 except Exception as exc:
                     logger.error(f'{dg} generated an exception: {exc}')
 

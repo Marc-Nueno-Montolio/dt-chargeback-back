@@ -1,17 +1,11 @@
-import requests
-import os
+from settings import BASE_URL, DT_TOKEN, LOG_FORMAT, LOG_LEVEL, USER_AGENT
 import logging
+import os
+import requests
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Base URL for Dynatrace API
-BASE_URL = "https://apmactivegate.tech.ec.europa.eu/e/39a3e95b-5423-482c-879b-99ef235dffeb"
-# Retrieve API token from environment variable
-TOKEN = os.getenv("DT_TOKEN")
-
-from app.settings import USER_AGENT
 
 def get_host_tags():
     """
@@ -20,10 +14,10 @@ def get_host_tags():
     Returns:
         dict: JSON response containing host tags.
     """
-    logger.info("Starting host tags retrieval from Dynatrace")
+    logger.debug("Starting host tags retrieval from Dynatrace")
     url = f"{BASE_URL}/api/v2/tags"
     headers = {
-        "Authorization": f"Api-Token {TOKEN}",
+        "Authorization": f"Api-Token {DT_TOKEN}",
         "User-Agent": USER_AGENT
     }
     params = {"entitySelector": "type(HOST)"}
@@ -54,7 +48,7 @@ def get_hosts():
     Returns:
         dict: JSON response containing host data.
     """
-    logger.info("Starting host data retrieval from Dynatrace")
+    logger.debug("Starting host data retrieval from Dynatrace")
     
     url = f"{BASE_URL}/api/v2/entities"
     params = {
@@ -65,7 +59,7 @@ def get_hosts():
         "to": "now"
     }
     headers = {
-        "Authorization": f"Api-Token {TOKEN}",
+        "Authorization": f"Api-Token {DT_TOKEN}",
         "User-Agent": USER_AGENT
     }
     
@@ -122,7 +116,7 @@ def get_applications():
     Returns:
         dict: JSON response containing application data.
     """
-    logger.info("Starting application data retrieval from Dynatrace")
+    logger.debug("Starting application data retrieval from Dynatrace")
     url = f"{BASE_URL}/api/v2/entities"
     params = {
         "entitySelector": "type(APPLICATION)",
@@ -132,7 +126,7 @@ def get_applications():
         "to": "now"
     }
     headers = {
-        "Authorization": f"Api-Token {TOKEN}",
+        "Authorization": f"Api-Token {DT_TOKEN}",
         "User-Agent": USER_AGENT
     }
     
@@ -157,7 +151,7 @@ def get_synthetics():
     Returns:
         dict: JSON response containing synthetic test data.
     """
-    logger.info("Starting synthetic data retrieval from Dynatrace")
+    logger.debug("Starting synthetic data retrieval from Dynatrace")
     synthetic_types = ["SYNTHETIC_TEST", "HTTP_CHECK", "EXTERNAL_SYNTHETIC_TEST"]
     all_synthetics = []
 
@@ -172,7 +166,7 @@ def get_synthetics():
             "to": "now"
         }
         headers = {
-            "Authorization": f"Api-Token {TOKEN}",
+            "Authorization": f"Api-Token {DT_TOKEN}",
             "User-Agent": USER_AGENT
         }
         
@@ -201,7 +195,7 @@ def query_metric(metricSelector=None, resolution="1h", data_from="-30d", data_to
     Returns:
         dict: JSON response containing host data.
     """
-    logger.info("Starting metrics API query to Dynatrace")
+    logger.debug("Starting metrics API query to Dynatrace")
     
     url = f"{BASE_URL}/api/v2/metrics/query"
     params = {
@@ -211,7 +205,7 @@ def query_metric(metricSelector=None, resolution="1h", data_from="-30d", data_to
         "to": data_to
     }
     headers = {
-        "Authorization": f"Api-Token {TOKEN}",
+        "Authorization": f"Api-Token {DT_TOKEN}",
         "User-Agent": USER_AGENT
     }
     

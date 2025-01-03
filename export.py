@@ -1,12 +1,35 @@
-from typing import Dict
-import pandas as pd
-import logging
 from openpyxl import Workbook
-from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+import csv
+import json
+from settings import LOG_FORMAT, LOG_LEVEL
+from typing import Dict
+import logging
+import pandas as pd
 
+logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+
+from datetime import datetime
+
+def export_data(data, output, format):
+    if format == 'json':
+        # Convert datetime objects to strings
+        for item in data:
+            for key, value in item.items():
+                if isinstance(value, datetime):
+                    item[key] = value.isoformat()
+        
+        with open(output, 'w') as f:
+            json.dump(data, f, indent=2)
+    elif format == 'csv':
+        with open(output, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(data[0].keys())
+            for row in data:
+                writer.writerow(row.values())
+
 
 class ChargebackExcelExporter:
     """
@@ -106,12 +129,12 @@ class ChargebackExcelExporter:
         cell = sheet.cell(row=current_row, column=1, value=f"Directorate General: {dg['name']}")
         cell.font = self.header_font
         cell.fill = self.header_fill
-        sheet.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=11)
+        sheet.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=12)
         sheet.freeze_panes = 'A2'  # Freeze the DG header row
         current_row += 1
 
         # Add main headers and freeze them
-        headers = ['', 'Entity Name', 'DT ID', 'Managed', 'Fullstack', 'Infrastructure', 'RUM', 'RUM with Session Replay', 'Browser Monitor', 'HTTP Monitor', '3rd Party Monitor']
+        headers = ['', 'Entity Name', 'DT ID', 'Managed', 'Billed', 'Fullstack', 'Infrastructure', 'RUM', 'RUM with Session Replay', 'Browser Monitor', 'HTTP Monitor', '3rd Party Monitor']
         for col, header in enumerate(headers, 1):
             cell = sheet.cell(row=current_row, column=col, value=header)
             cell.fill = self.header_fill
@@ -123,10 +146,10 @@ class ChargebackExcelExporter:
         # Process each IS
         for is_system in dg['data']['information_systems']:
             # Add IS header
-            cell = sheet.cell(row=current_row, column=1, value=f"IS: {is_system['name']}")
+            cell = sheet.cell(row=current_row, column=1, value=f"IS: {is_system['name']}  {"(managed)" if {is_system['managed']} == True else ""}")
             cell.font = self.subheader_font
             cell.fill = self.subheader_fill
-            sheet.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=11)
+            sheet.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=12)
             current_row += 1
             
             # Add entity sections
@@ -135,16 +158,17 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Hosts")
                 cell.font = self.subheader_font
                 cell.fill = self.host_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for host in is_system['data']['entities']['hosts']:
                     sheet.cell(row=current_row, column=2, value=host.get('name', ''))
                     sheet.cell(row=current_row, column=3, value=host.get('dt_id', ''))
                     sheet.cell(row=current_row, column=4, value=host.get('managed', False))
-                    sheet.cell(row=current_row, column=5, value=host.get('usage', {}).get('fullstack', 0))
-                    sheet.cell(row=current_row, column=6, value=host.get('usage', {}).get('infra', 0))
-                    for col in range(7, 11):  # Fill remaining columns with '
+                    sheet.cell(row=current_row, column=5, value=host.get('billed', False))
+                    sheet.cell(row=current_row, column=6, value=host.get('usage', {}).get('fullstack', 0))
+                    sheet.cell(row=current_row, column=7, value=host.get('usage', {}).get('infra', 0))
+                    for col in range(8, 12):  # Fill remaining columns with '
                         sheet.cell(row=current_row, column=col, value='')
                     current_row += 1
                 current_row += 1
@@ -154,19 +178,21 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Applications")
                 cell.font = self.subheader_font
                 cell.fill = self.app_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for app in is_system['data']['entities']['applications']:
                     sheet.cell(row=current_row, column=2, value=app.get('name', ''))
                     sheet.cell(row=current_row, column=3, value=app.get('dt_id', ''))
-                    sheet.cell(row=current_row, column=4, value='')
-                    sheet.cell(row=current_row, column=5, value='')  # Fullstack
+                    sheet.cell(row=current_row, column=4, value=False)
+                    sheet.cell(row=current_row, column=5, value=app.get('billed', False))
+                    sheet.cell(row=current_row, column=6, value='')  # Fullstack
                     sheet.cell(row=current_row, column=7, value='')  # Infrastructure
                     sheet.cell(row=current_row, column=8, value=app.get('usage', {}).get('rum', 0))
                     sheet.cell(row=current_row, column=9, value=app.get('usage', {}).get('rum_with_session_replay', 0))
                     sheet.cell(row=current_row, column=10, value='')
                     sheet.cell(row=current_row, column=11, value='')
+                    sheet.cell(row=current_row, column=12, value='')
                     current_row += 1
                 current_row += 1
                 
@@ -175,20 +201,21 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Synthetics")
                 cell.font = self.subheader_font
                 cell.fill = self.synthetic_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for synthetic in is_system['data']['entities']['synthetics']:
                     sheet.cell(row=current_row, column=2, value=synthetic.get('name', ''))
                     sheet.cell(row=current_row, column=3, value=synthetic.get('dt_id', ''))
-                    sheet.cell(row=current_row, column=4, value='')
-                    sheet.cell(row=current_row, column=5, value='')
+                    sheet.cell(row=current_row, column=4, value=False)
+                    sheet.cell(row=current_row, column=5, value=synthetic.get('billed', False))
                     sheet.cell(row=current_row, column=6, value='')
                     sheet.cell(row=current_row, column=7, value='')
                     sheet.cell(row=current_row, column=8, value='')
-                    sheet.cell(row=current_row, column=9, value=synthetic.get('usage', {}).get('browser_monitor', 0))
-                    sheet.cell(row=current_row, column=10, value=synthetic.get('usage', {}).get('http_monitor', 0))
-                    sheet.cell(row=current_row, column=11, value=synthetic.get('usage', {}).get('third_party_monitor', 0))
+                    sheet.cell(row=current_row, column=9, value='')
+                    sheet.cell(row=current_row, column=10, value=synthetic.get('usage', {}).get('browser_monitor', 0))
+                    sheet.cell(row=current_row, column=11, value=synthetic.get('usage', {}).get('http_monitor', 0))
+                    sheet.cell(row=current_row, column=12, value=synthetic.get('usage', {}).get('third_party_monitor', 0))
                     current_row += 1
                 current_row += 1
             
@@ -207,16 +234,17 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Hosts")
                 cell.font = self.subheader_font
                 cell.fill = self.host_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for host in dg['data']['unassigned_entities']['entities']['hosts']:
                     sheet.cell(row=current_row, column=2, value=host.get('name', ''))
                     sheet.cell(row=current_row, column=3, value=host.get('dt_id', ''))
-                    sheet.cell(row=current_row, column=4, value=host.get('managed', ''))
-                    sheet.cell(row=current_row, column=5, value=host.get('usage', {}).get('fullstack', 0))
-                    sheet.cell(row=current_row, column=6, value=host.get('usage', {}).get('infra', 0))
-                    for col in range(7, 12):  # Fill remaining columns with empty values
+                    sheet.cell(row=current_row, column=4, value=host.get('managed', False))
+                    sheet.cell(row=current_row, column=5, value=host.get('billed', False))
+                    sheet.cell(row=current_row, column=6, value=host.get('usage', {}).get('fullstack', 0))
+                    sheet.cell(row=current_row, column=7, value=host.get('usage', {}).get('infra', 0))
+                    for col in range(8, 12):  # Fill remaining columns with empty values
                         sheet.cell(row=current_row, column=col, value='')
                     current_row += 1
                 current_row += 1
@@ -226,18 +254,21 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Applications") 
                 cell.font = self.subheader_font
                 cell.fill = self.app_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for app in dg['data']['unassigned_entities']['entities']['applications']:
                     sheet.cell(row=current_row, column=2, value=app.get('name', ''))
                     sheet.cell(row=current_row, column=3, value=app.get('dt_id', ''))
-                    for col in range(4, 8):  # Fill host columns with empty values
-                        sheet.cell(row=current_row, column=col, value='')
+                    sheet.cell(row=current_row, column=4, value='')
+                    sheet.cell(row=current_row, column=5, value='')
+                    sheet.cell(row=current_row, column=6, value='')
+                    sheet.cell(row=current_row, column=7, value='')
                     sheet.cell(row=current_row, column=8, value=app.get('usage', {}).get('rum', 0))
                     sheet.cell(row=current_row, column=9, value=app.get('usage', {}).get('rum_with_session_replay', 0))
                     sheet.cell(row=current_row, column=10, value='')
                     sheet.cell(row=current_row, column=11, value='')
+                    sheet.cell(row=current_row, column=12, value='')
                     current_row += 1
                 current_row += 1
                 
@@ -246,7 +277,7 @@ class ChargebackExcelExporter:
                 cell = sheet.cell(row=current_row, column=2, value="Synthetics")
                 cell.font = self.subheader_font
                 cell.fill = self.synthetic_fill
-                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=11)
+                sheet.merge_cells(start_row=current_row, start_column=2, end_row=current_row, end_column=12)
                 current_row += 1
                 
                 for synthetic in dg['data']['unassigned_entities']['entities']['synthetics']:
@@ -254,91 +285,18 @@ class ChargebackExcelExporter:
                     sheet.cell(row=current_row, column=3, value=synthetic.get('dt_id', ''))
                     for col in range(4, 9):  # Fill host and app columns with empty values
                         sheet.cell(row=current_row, column=col, value='')
-                    sheet.cell(row=current_row, column=9, value=synthetic.get('usage', {}).get('browser_monitor', 0))
-                    sheet.cell(row=current_row, column=10, value=synthetic.get('usage', {}).get('http_monitor', 0))
-                    sheet.cell(row=current_row, column=11, value=synthetic.get('usage', {}).get('third_party_monitor', 0))
+                    sheet.cell(row=current_row, column=10, value=synthetic.get('usage', {}).get('browser_monitor', 0))
+                    sheet.cell(row=current_row, column=11, value=synthetic.get('usage', {}).get('http_monitor', 0))
+                    sheet.cell(row=current_row, column=12, value=synthetic.get('usage', {}).get('third_party_monitor', 0))
                     current_row += 1
                 current_row += 1
         
         # Adjust column widths
-        for col in range(1, 11):
+        sheet.column_dimensions[get_column_letter(col)].width = 2
+        for col in range(2, 12):
             sheet.column_dimensions[get_column_letter(col)].width = 15
             
         self._apply_formatting(sheet)
-
-    def _add_hosts_section(self, sheet, hosts, current_row):
-        """Adds hosts section to sheet."""
-        if not hosts:
-            return current_row
-            
-        # Add section header
-        headers = ['Name', 'DT ID'] + self.host_columns
-        for col, header in enumerate(headers, 1):
-            cell = sheet.cell(row=current_row, column=col, value=header)
-            cell.fill = self.host_fill
-            cell.font = self.subheader_font
-            
-        current_row += 1
-        
-        # Add host data
-        for host in hosts:
-            sheet.cell(row=current_row, column=1, value=host.get('name', ''))
-            sheet.cell(row=current_row, column=2, value=host['dt_id'])
-            sheet.cell(row=current_row, column=3, value=host.get('managed', ''))
-            sheet.cell(row=current_row, column=4, value=host['usage'].get('fullstack', 0))
-            sheet.cell(row=current_row, column=5, value=host['usage'].get('infra', 0))
-            current_row += 1
-            
-        return current_row + 1
-
-    def _add_applications_section(self, sheet, applications, current_row):
-        """Adds applications section to sheet."""
-        if not applications:
-            return current_row
-            
-        # Add section header
-        headers = ['Name', 'DT ID'] + self.app_columns
-        for col, header in enumerate(headers, 1):
-            cell = sheet.cell(row=current_row, column=col, value=header)
-            cell.fill = self.app_fill
-            cell.font = self.subheader_font
-            
-        current_row += 1
-        
-        # Add application data
-        for app in applications:
-            sheet.cell(row=current_row, column=1, value=app.get('name', ''))
-            sheet.cell(row=current_row, column=2, value=app['dt_id'])
-            sheet.cell(row=current_row, column=3, value=app['usage'].get('rum', 0))
-            sheet.cell(row=current_row, column=4, value=app['usage'].get('rum_with_sr', 0))
-            current_row += 1
-            
-        return current_row + 1
-
-    def _add_synthetics_section(self, sheet, synthetics, current_row):
-        """Adds synthetics section to sheet."""
-        if not synthetics:
-            return current_row
-            
-        # Add section header
-        headers = ['Name', 'DT ID'] + self.synthetic_columns
-        for col, header in enumerate(headers, 1):
-            cell = sheet.cell(row=current_row, column=col, value=header)
-            cell.fill = self.synthetic_fill
-            cell.font = self.subheader_font
-            
-        current_row += 1
-        
-        # Add synthetic data
-        for synthetic in synthetics:
-            sheet.cell(row=current_row, column=1, value=synthetic.get('name', ''))
-            sheet.cell(row=current_row, column=2, value=synthetic['dt_id'])
-            sheet.cell(row=current_row, column=3, value=synthetic['usage'].get('browser_monitor', 0))
-            sheet.cell(row=current_row, column=4, value=synthetic['usage'].get('http_monitor', 0))
-            sheet.cell(row=current_row, column=5, value=synthetic['usage'].get('3rd_party_monitor', 0))
-            current_row += 1
-            
-        return current_row + 1
 
     def _apply_formatting(self, sheet):
         """Applies common formatting to worksheet."""
