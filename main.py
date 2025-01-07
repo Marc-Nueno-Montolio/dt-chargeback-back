@@ -166,7 +166,7 @@ def generate(refresh_topology, dg, from_date, to_date, process_unassigned, inclu
     if not dgs:
         dgs = [dg.name for dg in db.query(DG).all()]
     
-    report_generator = ChargebackReport(db,  process_unassigned=process_unassigned)
+    report_generator = ChargebackReport(db,  process_unassigned=process_unassigned, include_non_charged_entities_in_dg=include_non_charged_entities_in_dg)
     report = asyncio.run(report_generator.generate_report(
         dg_names=dgs,
     ))
