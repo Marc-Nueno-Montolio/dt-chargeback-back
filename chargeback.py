@@ -14,7 +14,7 @@ class ChargebackReport:
     Generates detailed chargeback reports for Dynatrace usage across DGs and Information Systems.
     """
 
-    def __init__(self, db: Session, process_unassigned: bool = True, entity_types: List[str] = None):
+    def __init__(self, db: Session, process_unassigned: bool = True, include_non_charged_entities_in_dg: bool = False, entity_types: List[str] = None):
         """
         Initialize the chargeback report generator.
         
@@ -36,6 +36,7 @@ class ChargebackReport:
         ]
         self.processed_entities = set()
         self.process_unassigned = process_unassigned
+        self.include_non_charged_entities_in_dg = include_non_charged_entities_in_dg
         # Default to all entity types if none specified
 
         self.process_entity_types = entity_types or ['hosts', 'applications', 'synthetics']
@@ -340,7 +341,9 @@ class ChargebackReport:
                 logger.warning(f"DG {dg.name} missing from report for host {host.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
         
-
+        if self.include_non_charged_entities_in_dg == False:
+            processed_dgs = charged_dgs
+        
         # Process each DG the host belongs to
         for dg in processed_dgs:
             usage = {}
@@ -358,6 +361,7 @@ class ChargebackReport:
             
             logger.debug(f"Host {host.name} consumes  - Fullstack: {fullstack_usage}, Infrastructure: {infra_usage} in DG {dg.name}")
 
+            billed = True if host.managed or any(is_.managed for is_ in host.information_systems) else False
             
             host_data = {
                 'id': host.id,
@@ -365,7 +369,7 @@ class ChargebackReport:
                 'dt_id': host.dt_id,
                 'usage': usage,
                 'managed': host.managed,
-                'billed': not host.managed,
+                'billed': billed,
                 'tagged_dgs': tagged_dgs
             }            
                 
@@ -429,7 +433,9 @@ class ChargebackReport:
         logger.debug(f"Application {app.name} belongs to DGs: {dgs}")
 
         tagged_dgs = [dg.name for dg in app.dgs]
+        processed_dgs = app.dgs
         charged_dgs = []
+        
         # Apply DG priority rules - DIGIT C > DIGIT > Others
         if any(dg.name == 'DIGIT C' for dg in app.dgs):
             charged_dgs = [next(dg for dg in app.dgs if dg.name == 'DIGIT C')]
@@ -442,34 +448,44 @@ class ChargebackReport:
             logger.debug(f"Application {app.name} processed for all assigned DGs")
 
         # Ensure report contains all relevant DGs
-        for dg in charged_dgs:
+        for dg in processed_dgs:
             if not any(dg_report['name'] == dg.name for dg_report in report['dgs']):
                 logger.warning(f"DG {dg.name} missing from report for application {app.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
 
-        # Distribute usage across DGs if multiple
-        usage = {
-            'rum': (rum_usage / len(charged_dgs)) if rum_usage > 0 else 0.0,
-            'rum_with_sr': (rum_sr_usage / len(charged_dgs)) if rum_sr_usage > 0 else 0.0
-        }
-
-        app_data = {
-            'id': app.id,
-            'name': app.name,
-            'dt_id': app.dt_id,
-            'usage': usage,
-            'billed': False,
-            'tagged_dgs': tagged_dgs
-        }
+        if self.include_non_charged_entities_in_dg == False:
+            processed_dgs = charged_dgs
 
         # Process each DG the application belongs to
-        for dg in charged_dgs:
-            logger.debug(f"Processing DG {dg.name} for application {app.name}")
-            
+        for dg in processed_dgs:
+            usage = {}
+            logger.debug(f"Processing dg {dg.name}")
+            if dg in charged_dgs:
+                usage = {
+                    'rum': (rum_usage / len(charged_dgs)) if rum_usage > 0 else 0.0,
+                    'rum_with_sr': (rum_sr_usage / len(charged_dgs)) if rum_sr_usage > 0 else 0.0
+                }
+            else:
+                usage = {
+                    'rum': 0.0,
+                    'rum_with_sr': 0.0
+                }
+
+            billed = True if any(is_.managed for is_ in app.information_systems) else False
+
+            app_data = {
+                'id': app.id,
+                'name': app.name,
+                'dt_id': app.dt_id,
+                'usage': usage,
+                'billed': billed,
+                'tagged_dgs': tagged_dgs
+            }
+
             dg_index = next((i for i, dg_report in enumerate(report['dgs']) if dg_report['name'] == dg.name), None)
             if dg_index is None:
                 logger.warning(f"DG {dg.name} not found in report - Skipping")
-                break
+                continue
 
             # Check if application belongs to an IS in this DG
             matching_is = next((is_obj for is_obj in dg.information_systems if app in is_obj.applications), None)
@@ -484,11 +500,18 @@ class ChargebackReport:
                         self._create_is_report_structure(matching_is))
                     is_index = -1
                 
-                report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['applications'].append(app_data)
-                logger.debug(f"Added application {app.name} to IS {matching_is.name} in DG {dg.name}")
+                if any(d['dt_id'] == app_data['dt_id'] for d in report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['applications']):
+                    continue
+                else:
+                    report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['applications'].append(app_data)
+                    logger.debug(f"Added application {app.name} to IS {matching_is.name} in DG {dg.name}")
             else:
-                logger.debug(f"No matching IS found for application {app.name} in DG {dg.name} - Adding to unassigned")
-                report['dgs'][dg_index]['data']['unassigned_entities']['entities']['applications'].append(app_data)
+                # Avoid duplicate entries
+                if any(d['dt_id'] == app_data['dt_id'] for d in report['dgs'][dg_index]['data']['unassigned_entities']['entities']['applications']):
+                    continue
+                else:
+                    logger.debug(f"No matching IS found for application {app.name} in DG {dg.name} - Adding to unassigned")
+                    report['dgs'][dg_index]['data']['unassigned_entities']['entities']['applications'].append(app_data)
                 logger.debug(f"Added application {app.name} to unassigned entities in DG {dg.name}")
 
         self.processed_entities.add(app.dt_id)
@@ -521,7 +544,9 @@ class ChargebackReport:
         logger.debug(f"Synthetic {synthetic.name} belongs to DGs: {dgs}")
 
         tagged_dgs = [dg.name for dg in synthetic.dgs]
+        processed_dgs = synthetic.dgs
         charged_dgs = []
+        
         # Apply DG priority rules - DIGIT C > DIGIT > Others
         if any(dg.name == 'DIGIT C' for dg in synthetic.dgs):
             charged_dgs = [next(dg for dg in synthetic.dgs if dg.name == 'DIGIT C')]
@@ -534,31 +559,42 @@ class ChargebackReport:
             logger.debug(f"Synthetic {synthetic.name} processed for all assigned DGs")
 
         # Ensure report contains all relevant DGs
-        for dg in charged_dgs:
+        for dg in processed_dgs:
             if not any(dg_report['name'] == dg.name for dg_report in report['dgs']):
                 logger.warning(f"DG {dg.name} missing from report for synthetic {synthetic.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
 
-        # Distribute usage across DGs if multiple
-        usage = {
-            'browser_monitor': (browser_usage / len(charged_dgs)) if browser_usage > 0 else 0.0,
-            'http_monitor': (http_usage / len(charged_dgs)) if http_usage > 0 else 0.0,
-            '3rd_party_monitor': (third_party_usage / len(charged_dgs)) if third_party_usage > 0 else 0.0
-        }
-
-        synthetic_data = {
-            'id': synthetic.id,
-            'name': synthetic.name,
-            'dt_id': synthetic.dt_id,
-            'usage': usage,
-            'billed': False,
-            'tagged_dgs': tagged_dgs
-        }
+        if self.include_non_charged_entities_in_dg == False:
+            processed_dgs = charged_dgs
 
         # Process each DG the synthetic belongs to
-        for dg in charged_dgs:
-            logger.debug(f"Processing DG {dg.name} for synthetic {synthetic.name}")
-            
+        for dg in processed_dgs:
+            usage = {}
+            logger.debug(f"Processing dg {dg.name}")
+            if dg in charged_dgs:
+                usage = {
+                    'browser_monitor': (browser_usage / len(charged_dgs)) if browser_usage > 0 else 0.0,
+                    'http_monitor': (http_usage / len(charged_dgs)) if http_usage > 0 else 0.0,
+                    '3rd_party_monitor': (third_party_usage / len(charged_dgs)) if third_party_usage > 0 else 0.0
+                }
+            else:
+                usage = {
+                    'browser_monitor': 0.0,
+                    'http_monitor': 0.0,
+                    '3rd_party_monitor': 0.0
+                }
+
+            billed = True if any(is_.managed for is_ in synthetic.information_systems) else False
+
+            synthetic_data = {
+                'id': synthetic.id,
+                'name': synthetic.name,
+                'dt_id': synthetic.dt_id,
+                'usage': usage,
+                'billed': billed,
+                'tagged_dgs': tagged_dgs
+            }
+
             dg_index = next((i for i, dg_report in enumerate(report['dgs']) if dg_report['name'] == dg.name), None)
             if dg_index is None:
                 logger.warning(f"DG {dg.name} not found in report - Skipping")
@@ -577,11 +613,18 @@ class ChargebackReport:
                         self._create_is_report_structure(matching_is))
                     is_index = -1
                 
-                report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['synthetics'].append(synthetic_data)
-                logger.debug(f"Added synthetic {synthetic.name} to IS {matching_is.name} in DG {dg.name}")
+                if any(d['dt_id'] == synthetic_data['dt_id'] for d in report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['synthetics']):
+                    continue
+                else:
+                    report['dgs'][dg_index]['data']['information_systems'][is_index]['data']['entities']['synthetics'].append(synthetic_data)
+                    logger.debug(f"Added synthetic {synthetic.name} to IS {matching_is.name} in DG {dg.name}")
             else:
-                logger.debug(f"No matching IS found for synthetic {synthetic.name} in DG {dg.name} - Adding to unassigned")
-                report['dgs'][dg_index]['data']['unassigned_entities']['entities']['synthetics'].append(synthetic_data)
+                # Avoid duplicate entries
+                if any(d['dt_id'] == synthetic_data['dt_id'] for d in report['dgs'][dg_index]['data']['unassigned_entities']['entities']['synthetics']):
+                    continue
+                else:
+                    logger.debug(f"No matching IS found for synthetic {synthetic.name} in DG {dg.name} - Adding to unassigned")
+                    report['dgs'][dg_index]['data']['unassigned_entities']['entities']['synthetics'].append(synthetic_data)
                 logger.debug(f"Added synthetic {synthetic.name} to unassigned entities in DG {dg.name}")
 
         self.processed_entities.add(synthetic.dt_id)

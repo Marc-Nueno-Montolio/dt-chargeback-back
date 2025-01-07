@@ -286,7 +286,10 @@ def update_host(db: Session, host_data: dict):
                             host_dgs.add(dg)
                             if is_ := db.query(IS).filter(IS.name == is_name, IS.dg_id == dg.id).first():
                                 host_is.append(is_)
-
+        # If host is managed, and IS is not managed, mark IS as managed
+        for is_ in host_is:
+            if is_.managed == False:
+                is_.managed = True
         host.dgs = list(host_dgs)
         host.information_systems = host_is
         db.commit()

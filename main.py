@@ -150,8 +150,9 @@ def chargeback():
 @click.option('--from_date', default="-30d", help="Start date for the report (default: -30d) (Not implemented yet)")
 @click.option('--to_date', default="now", help="End date for the report (default: now) (Not Implemented yet)")
 @click.option('--process-unassigned', is_flag=True, default=False, help="Include entities not assigned to any DG (default: False)")
+@click.option('--include-non-charged-entities-in-dg', is_flag=True, default=False, help="Include non-charged entities in DG (default: False)")
 @click.option('--output', default="output.xlsx", help="Output file name (default: output.xlsx)")
-def generate(refresh_topology, dg, from_date, to_date, process_unassigned, output):
+def generate(refresh_topology, dg, from_date, to_date, process_unassigned, include_non_charged_entities_in_dg, output):
     """Generate chargeback report"""
     if refresh_topology:
         click.echo("Refreshing topology database...")

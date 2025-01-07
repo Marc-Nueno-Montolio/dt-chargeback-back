@@ -39,7 +39,7 @@ class ChargebackExcelExporter:
 
     def __init__(self):
         # Define usage columns in order
-        self.host_columns = ['Managed', 'Fullstack', 'Infrastructure'] 
+        self.host_columns = ['Fullstack', 'Infrastructure'] 
         self.app_columns = ['RUM', 'RUM with Session Replay']
         self.synthetic_columns = ['Browser Monitor', 'HTTP Monitor', '3rd Party Monitor']
 
