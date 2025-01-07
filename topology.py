@@ -26,18 +26,7 @@ class RefreshStatus(str, Enum):
     COMPLETED = 'completed'
     FAILED = 'failed'
 
-# Global variable for managed hosts from input data
-managed_host_tags=[]
-with open(MANAGED_HOST_TAGS_INPUT_FILE, 'r') as file:
-        for line in file:
-            managed_host_tags.extend(line.strip().split(','))
-logger.debug(f"Managed Host Tags: {managed_host_tags}")
 
-managed_is_names=[]
-with open(MANAGED_IS_NAMES_INPUT_FILE, 'r') as file:
-        for line in file:
-            managed_is_names.extend(line.strip().split(','))   
-logger.debug(f"Managed IS Names: {managed_is_names}") 
             
 # Global variable to track refresh status
 topology_refresh_status = {
@@ -213,7 +202,7 @@ def update_dg(db: Session, dg_value: str, dg_is_mapping: Dict):
             is_entries = []
             for is_name in dg_is_mapping[dg_value]:
                 if not db.query(IS).filter(IS.name == is_name, IS.dg_id == existing_dg.id).first():
-                    managed = is_is_managed(is_name, managed_is_names)
+                    managed = is_is_managed(is_name)
                     is_entries.append(IS(name=is_name, dg_id=existing_dg.id, last_updated=datetime.utcnow(), managed=managed))
             if is_entries:
                 db.bulk_save_objects(is_entries)
@@ -237,7 +226,7 @@ def update_host(db: Session, host_data: dict):
         memory_gb = memory_bytes / (1024 * 1024 * 1024) if memory_bytes else None
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
         
-        managed = host_is_managed({"tags": str(host_data.get("tags", []))}, managed_host_tags)
+        managed = host_is_managed({"tags": str(host_data.get("tags", []))})
 
         host_dict = {
             "dt_id": host_data.get("entityId"),

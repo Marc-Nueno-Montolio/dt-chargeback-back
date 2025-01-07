@@ -56,17 +56,17 @@ def IS_is_managed_by_name(name: str, managed_names: list=managed_is_names) -> bo
 # ===== CUSTOM LOGIC FOR MANAGED ENTITIES =====
 # These functions determine if an entity is managed by DIGIT
 
-def is_is_managed(is_name: str, managed_names: list) -> bool:
+def is_is_managed(is_name: str) -> bool:
     """
     Determine if an IS is managed by DIGIT based on its name.
     """
-    return IS_is_managed_by_name(is_name, managed_names)
+    return IS_is_managed_by_name(is_name)
 
-def host_is_managed(host:Host, managed_tags: list) -> bool:
+def host_is_managed(host:Host) -> bool:
     """
     Determine if a host is managed by DIGIT based on its tags.
     """
-    return host_is_managed_by_tags(host.tags, managed_tags)
+    return host_is_managed_by_tags(host.tags)
 
 def synthetic_is_managed(synthetic:Synthetic)->bool:
     """
