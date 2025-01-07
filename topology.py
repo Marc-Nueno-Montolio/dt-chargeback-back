@@ -1,6 +1,5 @@
 from database import get_db
 from dynatrace import get_applications, get_host_tags, get_hosts, get_synthetics
-from settings import MANAGED_HOST_TAGS_INPUT_FILE, MANAGED_IS_NAMES_INPUT_FILE
 from models import Application, DG, Host, IS, Synthetic
 from settings import LOG_FORMAT, LOG_LEVEL, TOPOLOGY_REFRESH_THREADS
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -14,6 +13,7 @@ from typing import Literal
 import json
 import logging
 import re
+from custom_logic import host_is_managed, is_is_managed
 
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -213,11 +213,7 @@ def update_dg(db: Session, dg_value: str, dg_is_mapping: Dict):
             is_entries = []
             for is_name in dg_is_mapping[dg_value]:
                 if not db.query(IS).filter(IS.name == is_name, IS.dg_id == existing_dg.id).first():
-                    managed = False
-                    for name in managed_is_names:
-                        if is_name == name:
-                            managed = True
-                            break
+                    managed = is_is_managed(is_name, managed_is_names)
                     is_entries.append(IS(name=is_name, dg_id=existing_dg.id, last_updated=datetime.utcnow(), managed=managed))
             if is_entries:
                 db.bulk_save_objects(is_entries)
@@ -241,11 +237,8 @@ def update_host(db: Session, host_data: dict):
         memory_gb = memory_bytes / (1024 * 1024 * 1024) if memory_bytes else None
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
         
-        managed = False
-        for tag in managed_host_tags:
-            if tag in str(host_data.get("tags", [])):
-                managed = True
-                break
+        managed = host_is_managed({"tags": str(host_data.get("tags", []))}, managed_host_tags)
+
         host_dict = {
             "dt_id": host_data.get("entityId"),
             "name": host_data.get("displayName"),

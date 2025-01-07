@@ -5,6 +5,7 @@ from settings import LOG_FORMAT, LOG_LEVEL
 from sqlalchemy.orm import Session
 from typing import Dict, List
 import logging
+from custom_logic import  *
 
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
@@ -361,10 +362,7 @@ class ChargebackReport:
             
             logger.debug(f"Host {host.name} consumes  - Fullstack: {fullstack_usage}, Infrastructure: {infra_usage} in DG {dg.name}")
 
-            billed = True if host.managed or any(is_.managed for is_ in host.information_systems) else False
-            if host.managed:
-                billed = False
-
+            
 
             host_data = {
                 'id': host.id,
@@ -372,7 +370,7 @@ class ChargebackReport:
                 'dt_id': host.dt_id,
                 'usage': usage,
                 'managed': host.managed,
-                'billed': billed,
+                'billed': host_is_billable(host),
                 'tagged_dgs': tagged_dgs
             }            
                 
