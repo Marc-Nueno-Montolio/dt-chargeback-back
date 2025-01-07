@@ -62,20 +62,20 @@ def is_is_managed(is_name: str) -> bool:
     """
     return IS_is_managed_by_name(is_name)
 
-def host_is_managed(host:Host) -> bool:
+def host_is_managed(host_data:dict) -> bool:
     """
     Determine if a host is managed by DIGIT based on its tags.
     """
-    return host_is_managed_by_tags(host.tags)
+    return host_is_managed_by_tags(host_data.get("tags", []))
 
-def synthetic_is_managed(synthetic:Synthetic)->bool:
+def synthetic_is_managed(synthetic_data:dict)->bool:
     """
     Determine if a synthetic monitor is managed by DIGIT.
     Currently no synthetic monitors are considered managed.
     """
     return False
 
-def application_is_managed(application:Application)->bool:
+def application_is_managed(application_data:dict)->bool:
     """
     Determine if an application is managed by DIGIT.
     Currently no applications are considered managed.
@@ -90,23 +90,30 @@ def application_is_managed(application:Application)->bool:
 def host_is_billable(host:Host)->bool:
     """
     Determine if a host should be billed.
-    A host is not billable if it is managed or if any of the information systems it belongs to are managed.
+    A host is not billable if it is managed.
     """
-    billable = False if host.managed or any(is_.managed for is_ in host.information_systems) else True
+    billable = False if host.managed  else True
     return billable
 
-def application_is_billable(application:Application)->bool:
+def app_is_billable(application:Application)->bool:
     """
     Determine if an application should be billed.
-    An application is not billable if it is managed or if any of the information systems it belongs to are managed.
+    An application is not billable if it is managed and if any of the information systems it belongs to are managed.
     """
-    billable = False if application.managed or any(is_.managed for is_ in application.information_systems) else True
+    billable = False if application.managed and any(is_.managed for is_ in application.information_systems) else True
     return billable
 
 def synthetic_is_billable(synthetic:Synthetic)->bool:
     """
     Determine if a synthetic monitor should be billed.
-    A synthetic monitor is not billable if it is managed or if any of the information systems it belongs to are managed.
+    A synthetic monitor is billable only if it's not managed and the information systems it belongs to are not managed. whenever any is is managed, the synthetic is not billable
     """
-    billable = False if synthetic.managed or any(is_.managed for is_ in synthetic.information_systems) else True
-    return billable
+    # If synthetic itself is managed, it's not billable
+    if synthetic.managed:
+        return False
+    
+    # If any IS is managed, synthetic is not billable
+    if any(is_.managed for is_ in synthetic.information_systems):
+        return False
+    
+    return True

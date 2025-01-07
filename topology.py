@@ -226,7 +226,7 @@ def update_host(db: Session, host_data: dict):
         memory_gb = memory_bytes / (1024 * 1024 * 1024) if memory_bytes else None
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
         
-        managed = host_is_managed({"tags": str(host_data.get("tags", []))})
+        managed = host_is_managed(host_data)
 
         host_dict = {
             "dt_id": host_data.get("entityId"),

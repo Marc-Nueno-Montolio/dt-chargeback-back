@@ -339,15 +339,17 @@ class ChargebackReport:
         # Ensure report contains all relevant DGs
         for dg in processed_dgs:
             if not any(dg_report['name'] == dg.name for dg_report in report['dgs']):
-                logger.warning(f"DG {dg.name} missing from report for host {host.name} - Creating structure")
+                logger.debug(f"DG {dg.name} missing from report for host {host.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
         
         if self.include_non_charged_entities_in_dg == False:
             processed_dgs = charged_dgs
         
         # Process each DG the host belongs to
+        
         for dg in processed_dgs:
             usage = {}
+            not_billable_in_this_dg = False
             logger.debug(f"Processing dg {dg.name}")
             if dg in charged_dgs:
                 usage = {
@@ -355,6 +357,7 @@ class ChargebackReport:
                     'infra': (infra_usage / len(charged_dgs)) if infra_usage > 0 and fullstack_usage == 0 else 0.0
                 }
             else:
+                not_billable_in_this_dg = True
                 usage = {
                     'fullstack': 0.0,
                     'infra': 0.0
@@ -370,7 +373,7 @@ class ChargebackReport:
                 'dt_id': host.dt_id,
                 'usage': usage,
                 'managed': host.managed,
-                'billed': host_is_billable(host),
+                'billed': host_is_billable(host) and (not not_billable_in_this_dg),
                 'tagged_dgs': tagged_dgs
             }            
                 
@@ -451,7 +454,7 @@ class ChargebackReport:
         # Ensure report contains all relevant DGs
         for dg in processed_dgs:
             if not any(dg_report['name'] == dg.name for dg_report in report['dgs']):
-                logger.warning(f"DG {dg.name} missing from report for application {app.name} - Creating structure")
+                logger.debug(f"DG {dg.name} missing from report for application {app.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
 
         if self.include_non_charged_entities_in_dg == False:
@@ -472,14 +475,13 @@ class ChargebackReport:
                     'rum_with_sr': 0.0
                 }
 
-            billed = True if any(is_.managed for is_ in app.information_systems) else False
-
             app_data = {
                 'id': app.id,
                 'name': app.name,
                 'dt_id': app.dt_id,
                 'usage': usage,
-                'billed': billed,
+                'managed': False,
+                'billed': app_is_billable(app),
                 'tagged_dgs': tagged_dgs
             }
 
@@ -562,7 +564,7 @@ class ChargebackReport:
         # Ensure report contains all relevant DGs
         for dg in processed_dgs:
             if not any(dg_report['name'] == dg.name for dg_report in report['dgs']):
-                logger.warning(f"DG {dg.name} missing from report for synthetic {synthetic.name} - Creating structure")
+                logger.debug(f"DG {dg.name} missing from report for synthetic {synthetic.name} - Creating structure")
                 report['dgs'].append(self._create_dg_report_structure(dg))
 
         if self.include_non_charged_entities_in_dg == False:
@@ -585,14 +587,13 @@ class ChargebackReport:
                     '3rd_party_monitor': 0.0
                 }
 
-            billed = True if any(is_.managed for is_ in synthetic.information_systems) else False
-
             synthetic_data = {
                 'id': synthetic.id,
+                'managed': False,
                 'name': synthetic.name,
                 'dt_id': synthetic.dt_id,
                 'usage': usage,
-                'billed': billed,
+                'billed': synthetic_is_billable(synthetic),
                 'tagged_dgs': tagged_dgs
             }
 
