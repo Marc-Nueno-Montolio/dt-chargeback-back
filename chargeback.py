@@ -42,7 +42,7 @@ class ChargebackReport:
         self.process_entity_types = entity_types or ['hosts', 'applications', 'synthetics']
         self.entity_types = ['hosts', 'applications', 'synthetics']
         
-        logger.info(f"Initialized ChargebackReport - Processing unassigned: {process_unassigned}, Entity types: {entity_types}")
+        logger.info(f"Initialized ChargebackReport - Processing unassigned: {self.process_unassigned}, Including non-charged entities in DG: {self.include_non_charged_entities_in_dg}, Processing: {self.process_entity_types}")
 
     async def generate_report(self, dg_names: List[str]) -> Dict:
         """
