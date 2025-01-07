@@ -39,7 +39,7 @@ class ChargebackExcelExporter:
 
     def __init__(self):
         # Define usage columns in order
-        self.host_columns = ['Fullstack', 'Infrastructure'] 
+        self.host_columns = ['Managed', 'Fullstack', 'Infrastructure'] 
         self.app_columns = ['RUM', 'RUM with Session Replay']
         self.synthetic_columns = ['Browser Monitor', 'HTTP Monitor', '3rd Party Monitor']
 
@@ -146,7 +146,7 @@ class ChargebackExcelExporter:
         # Process each IS
         for is_system in dg['data']['information_systems']:
             # Add IS header
-            cell = sheet.cell(row=current_row, column=1, value=f"IS: {is_system['name']}  {"(managed)" if {is_system['managed']} == True else ""}")
+            cell = sheet.cell(row=current_row, column=1, value=f"IS: {is_system['name']}  {'  (managed)' if is_system['managed'] else ''}")
             cell.font = self.subheader_font
             cell.fill = self.subheader_fill
             sheet.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=12)

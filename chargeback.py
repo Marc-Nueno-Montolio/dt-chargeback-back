@@ -362,7 +362,10 @@ class ChargebackReport:
             logger.debug(f"Host {host.name} consumes  - Fullstack: {fullstack_usage}, Infrastructure: {infra_usage} in DG {dg.name}")
 
             billed = True if host.managed or any(is_.managed for is_ in host.information_systems) else False
-            
+            if host.managed:
+                billed = False
+
+
             host_data = {
                 'id': host.id,
                 'name': host.name,

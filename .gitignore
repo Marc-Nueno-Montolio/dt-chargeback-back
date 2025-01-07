@@ -82,3 +82,8 @@ htmlcov/
 # Input and Output Files
 input/
 output/
+
+# Generated reports
+*.xlsx
+*.xls
+*.json
