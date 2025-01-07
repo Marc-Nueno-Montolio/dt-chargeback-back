@@ -13,7 +13,7 @@ from typing import Literal
 import json
 import logging
 import re
-from custom_logic import host_is_managed, is_is_managed
+from chargeback_logic import host_is_managed, is_is_managed
 
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

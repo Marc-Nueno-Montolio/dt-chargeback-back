@@ -5,7 +5,7 @@ from settings import LOG_FORMAT, LOG_LEVEL
 from sqlalchemy.orm import Session
 from typing import Dict, List
 import logging
-from custom_logic import  *
+from chargeback_logic import  *
 
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
