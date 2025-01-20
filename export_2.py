@@ -41,9 +41,36 @@ class ChargebackExcelExporter:
             # Sort DGs to put DIGIT C at the end
             sorted_dgs = sorted(report['dgs'], key=lambda x: x['name'] == 'DIGIT C')
 
+            # Create a dictionary to store DG totals
+            dg_totals = {}
+
+            # Initialize DIGIT C totals even if not in report
+            dg_totals['DIGIT C'] = {
+                'fullstack': 0,
+                'infra': 0,
+                'rum': 0,
+                'rum_sr': 0,
+                'browser': 0,
+                'http': 0,
+                'third': 0,
+                'managed': 0
+            }
+
             # Iterate through DGs and collect data
             for dg in sorted_dgs:
                 dg_name = dg['name']
+                logger.info(f"Processing DG: {dg_name}")
+                if dg_name not in dg_totals:
+                    dg_totals[dg_name] = {
+                        'fullstack': 0,
+                        'infra': 0,
+                        'rum': 0,
+                        'rum_sr': 0,
+                        'browser': 0,
+                        'http': 0,
+                        'third': 0,
+                        'managed': 0
+                    }
                 
                 # Process assigned entities
                 for is_system in dg['data']['information_systems']:
@@ -58,42 +85,67 @@ class ChargebackExcelExporter:
                     for host in is_system['data']['entities'].get('hosts', []):
                         # Sort tagged DGs to put DIGIT C last
                         tagged_dgs = sorted(host.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                        
+                        # Determine which DG to attribute costs to
+                        target_dg = 'DIGIT C' if not host.get('managed', False) and not host.get('billed', False) else dg_name
+                        
+                        fullstack_usage = host.get('usage', {}).get('fullstack', 0)
+                        infra_usage = host.get('usage', {}).get('infra', 0)
+                        
+                        # Add usage to appropriate DG totals
+                        dg_totals[target_dg]['fullstack'] += fullstack_usage
+                        dg_totals[target_dg]['infra'] += infra_usage
+                        if host.get('managed', False):
+                            dg_totals[target_dg]['managed'] += 1
+                            
                         row = [
-                            dg_name, is_name, is_managed, 'Host', host.get('name', ''), host.get('dt_id', ''),
+                            target_dg, is_name, is_managed, 'Host', host.get('name', ''), host.get('dt_id', ''),
                             host.get('managed', False), host.get('cloud', False), host.get('billed', False),
-                            ', '.join(tagged_dgs), host.get('usage', {}).get('fullstack', 0),
-                            host.get('usage', {}).get('infra', 0), 0, 0, 0, 0, 0,
+                            ', '.join(tagged_dgs), fullstack_usage, infra_usage, 0, 0, 0, 0, 0,
                             managed_hosts_count, non_managed_hosts_count
                         ]
                         data.append(row)
 
                     # Process applications
                     for app in is_system['data']['entities'].get('applications', []):
-                        # Sort tagged DGs to put DIGIT C last
+                        target_dg = 'DIGIT C' if not app.get('billed', False) else dg_name
                         tagged_dgs = sorted(app.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                        
+                        rum_usage = app.get('usage', {}).get('rum', 0)
+                        rum_sr_usage = app.get('usage', {}).get('rum_with_sr', 0)
+                        
+                        dg_totals[target_dg]['rum'] += rum_usage
+                        dg_totals[target_dg]['rum_sr'] += rum_sr_usage
+                        
                         row = [
-                            dg_name, is_name, is_managed, 'Application', app.get('name', ''), app.get('dt_id', ''),
+                            target_dg, is_name, is_managed, 'Application', app.get('name', ''), app.get('dt_id', ''),
                             False, None, app.get('billed', False), ', '.join(tagged_dgs), 0, 0,
-                            app.get('usage', {}).get('rum', 0), app.get('usage', {}).get('rum_with_session_replay', 0),
-                            0, 0, 0, managed_hosts_count, non_managed_hosts_count
+                            rum_usage, rum_sr_usage, 0, 0, 0, managed_hosts_count, non_managed_hosts_count
                         ]
                         data.append(row)
 
                     # Process synthetics
                     for synthetic in is_system['data']['entities'].get('synthetics', []):
-                        # Sort tagged DGs to put DIGIT C last
+                        target_dg = 'DIGIT C' if not synthetic.get('billed', False) else dg_name
                         tagged_dgs = sorted(synthetic.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                        
+                        browser_usage = synthetic.get('usage', {}).get('browser_monitor', 0)
+                        http_usage = synthetic.get('usage', {}).get('http_monitor', 0)
+                        third_usage = synthetic.get('usage', {}).get('third_party_monitor', 0)
+                        
+                        dg_totals[target_dg]['browser'] += browser_usage
+                        dg_totals[target_dg]['http'] += http_usage
+                        dg_totals[target_dg]['third'] += third_usage
+                        
                         row = [
-                            dg_name, is_name, is_managed, 'Synthetic', synthetic.get('name', ''), synthetic.get('dt_id', ''),
+                            target_dg, is_name, is_managed, 'Synthetic', synthetic.get('name', ''), synthetic.get('dt_id', ''),
                             False, None, synthetic.get('billed', False), ', '.join(tagged_dgs), 0, 0,
-                            0, 0, synthetic.get('usage', {}).get('browser_monitor', 0),
-                            synthetic.get('usage', {}).get('http_monitor', 0),
-                            synthetic.get('usage', {}).get('third_party_monitor', 0),
+                            0, 0, browser_usage, http_usage, third_usage,
                             managed_hosts_count, non_managed_hosts_count
                         ]
                         data.append(row)
 
-                # Process unassigned entities
+                # Process unassigned entities similarly
                 unassigned = dg['data']['unassigned_entities']['entities']
                 
                 # Calculate managed and non-managed hosts counts for unassigned
@@ -104,37 +156,59 @@ class ChargebackExcelExporter:
                 for entity_type, entities in unassigned.items():
                     if entity_type == 'hosts':
                         for host in entities:
-                            # Sort tagged DGs to put DIGIT C last
+                            target_dg = 'DIGIT C' if not host.get('managed', False) and not host.get('billed', False) else dg_name
                             tagged_dgs = sorted(host.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                            
+                            fullstack_usage = host.get('usage', {}).get('fullstack', 0)
+                            infra_usage = host.get('usage', {}).get('infra', 0)
+                            
+                            dg_totals[target_dg]['fullstack'] += fullstack_usage
+                            dg_totals[target_dg]['infra'] += infra_usage
+                            if host.get('managed', False):
+                                dg_totals[target_dg]['managed'] += 1
+                                
                             row = [
-                                dg_name, 'Unassigned', False, 'Host', host.get('name', ''), host.get('dt_id', ''),
+                                target_dg, 'Unassigned', False, 'Host', host.get('name', ''), host.get('dt_id', ''),
                                 host.get('managed', False), host.get('cloud', False), host.get('billed', False),
-                                ', '.join(tagged_dgs), host.get('usage', {}).get('fullstack', 0),
-                                host.get('usage', {}).get('infra', 0), 0, 0, 0, 0, 0,
+                                ', '.join(tagged_dgs), fullstack_usage, infra_usage, 0, 0, 0, 0, 0,
                                 unassigned_managed_hosts_count, unassigned_non_managed_hosts_count
                             ]
                             data.append(row)
                     elif entity_type == 'applications':
                         for app in entities:
-                            # Sort tagged DGs to put DIGIT C last
+                            target_dg = 'DIGIT C' if not app.get('billed', False) else dg_name
                             tagged_dgs = sorted(app.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                            
+                            rum_usage = app.get('usage', {}).get('rum', 0)
+                            rum_sr_usage = app.get('usage', {}).get('rum_with_sr', 0)
+                            
+                            dg_totals[target_dg]['rum'] += rum_usage
+                            dg_totals[target_dg]['rum_sr'] += rum_sr_usage
+                            
                             row = [
-                                dg_name, 'Unassigned', False, 'Application', app.get('name', ''), app.get('dt_id', ''),
+                                target_dg, 'Unassigned', False, 'Application', app.get('name', ''), app.get('dt_id', ''),
                                 False, None, app.get('billed', False), ', '.join(tagged_dgs), 0, 0,
-                                app.get('usage', {}).get('rum', 0), app.get('usage', {}).get('rum_with_sr', 0),
-                                0, 0, 0, unassigned_managed_hosts_count, unassigned_non_managed_hosts_count
+                                rum_usage, rum_sr_usage, 0, 0, 0,
+                                unassigned_managed_hosts_count, unassigned_non_managed_hosts_count
                             ]
                             data.append(row)
                     elif entity_type == 'synthetics':
                         for synthetic in entities:
-                            # Sort tagged DGs to put DIGIT C last
+                            target_dg = 'DIGIT C' if not synthetic.get('billed', False) else dg_name
                             tagged_dgs = sorted(synthetic.get('tagged_dgs', []), key=lambda x: x == 'DIGIT C')
+                            
+                            browser_usage = synthetic.get('usage', {}).get('browser_monitor', 0)
+                            http_usage = synthetic.get('usage', {}).get('http_monitor', 0)
+                            third_usage = synthetic.get('usage', {}).get('third_party_monitor', 0)
+                            
+                            dg_totals[target_dg]['browser'] += browser_usage
+                            dg_totals[target_dg]['http'] += http_usage
+                            dg_totals[target_dg]['third'] += third_usage
+                            
                             row = [
-                                dg_name, 'Unassigned', False, 'Synthetic', synthetic.get('name', ''), synthetic.get('dt_id', ''),
+                                target_dg, 'Unassigned', False, 'Synthetic', synthetic.get('name', ''), synthetic.get('dt_id', ''),
                                 False, None, synthetic.get('billed', False), ', '.join(tagged_dgs), 0, 0,
-                                0, 0, synthetic.get('usage', {}).get('browser_monitor', 0),
-                                synthetic.get('usage', {}).get('http_monitor', 0),
-                                synthetic.get('usage', {}).get('third_party_monitor', 0),
+                                0, 0, browser_usage, http_usage, third_usage,
                                 unassigned_managed_hosts_count, unassigned_non_managed_hosts_count
                             ]
                             data.append(row)
@@ -204,8 +278,7 @@ class ChargebackExcelExporter:
 
                 # Freeze the header row
                 ws.freeze_panes = 'A2'
-
-                # Create Summary sheet
+                # Create Summary sheet using report data
                 summary_data = []
                 total_fullstack = 0
                 total_infra = 0
@@ -216,17 +289,26 @@ class ChargebackExcelExporter:
                 total_third = 0
                 total_managed = 0
 
+                # Sort DGs for summary, ensuring DIGIT C is last
+                sorted_dgs = sorted(report['dgs'], key=lambda x: x['name'] == 'DIGIT C')
+
+                logger.info("Processing DG totals for summary sheet")
                 for dg in sorted_dgs:
-                    totals = dg['data']['totals']
-                    usage = totals['usage']
-                    fullstack = usage.get('fullstack', 0)
-                    infra = usage.get('infra', 0)
-                    rum = usage.get('rum', 0)
-                    rum_sr = usage.get('rum_with_sr', 0)
-                    browser = usage.get('browser_monitor', 0)
-                    http = usage.get('http_monitor', 0)
-                    third = usage.get('3rd_party_monitor', 0)
-                    managed = totals.get('managed_hosts', 0)
+                    dg_name = dg['name']
+                    logger.info(f"Processing totals for DG: {dg_name}")
+                    
+                    totals = dg['data']['totals']['usage']
+                    managed_hosts = dg['data']['totals']['managed_hosts']
+
+                    logger.debug(f"DG {dg_name} raw totals: {totals}")
+
+                    fullstack = totals['fullstack']
+                    infra = totals['infra'] 
+                    rum = totals['rum']
+                    rum_sr = totals['rum_with_sr']
+                    browser = totals['browser_monitor']
+                    http = totals['http_monitor']
+                    third = totals['3rd_party_monitor']
 
                     total_fullstack += fullstack
                     total_infra += infra
@@ -235,19 +317,38 @@ class ChargebackExcelExporter:
                     total_browser += browser
                     total_http += http
                     total_third += third
-                    total_managed += managed
+                    total_managed += managed_hosts
+
+                    logger.debug(f"DG {dg_name} processed totals: Fullstack={fullstack}, Infra={infra}, RUM={rum}, RUM SR={rum_sr}, Browser={browser}, HTTP={http}, Third={third}, Managed={managed_hosts}")
 
                     summary_data.append([
-                        dg['name'],
-                        fullstack / (1024 * 1024),  # Convert to PiB
-                        infra / 1024,  # Convert to GiB
-                        rum / 1_000_000 if rum > 1_000_000 else rum / 1_000,  # Convert to M or K
-                        rum_sr / 1_000_000 if rum_sr > 1_000_000 else rum_sr / 1_000,
-                        browser / 1_000_000 if browser > 1_000_000 else browser / 1_000,
-                        http / 1_000_000 if http > 1_000_000 else http / 1_000,
-                        third / 1_000_000 if third > 1_000_000 else third / 1_000,
-                        managed
+                        dg_name,
+                        fullstack,
+                        infra,
+                        rum,
+                        rum_sr,
+                        browser,
+                        http,
+                        third,
+                        managed_hosts
                     ])
+
+                # Add DIGIT C totals if not already included
+                if 'DIGIT C' not in [row[0] for row in summary_data]:
+                    digit_c_totals = dg_totals['DIGIT C']
+                    summary_data.append([
+                        'DIGIT C',
+                        digit_c_totals['fullstack'],
+                        digit_c_totals['infra'],
+                        digit_c_totals['rum'],
+                        digit_c_totals['rum_sr'],
+                        digit_c_totals['browser'],
+                        digit_c_totals['http'],
+                        digit_c_totals['third'],
+                        digit_c_totals['managed']
+                    ])
+
+                logger.info(f"Final totals: Fullstack={total_fullstack}, Infra={total_infra}, RUM={total_rum}, RUM SR={total_rum_sr}, Browser={total_browser}, HTTP={total_http}, Third={total_third}, Managed={total_managed}")
 
                 summary_headers = [
                     'DG', 'Fullstack', 'Infra', 'RUM', 'RUM with SR',
@@ -275,25 +376,6 @@ class ChargebackExcelExporter:
                 last_row = len(summary_data) + 2  # +2 for header and blank line
                 total_row = last_row + 1
 
-                summary_ws.cell(row=total_row, column=1, value='TOTAL')
-                summary_ws.cell(row=total_row, column=2, value=total_fullstack / (1024 * 1024))
-                summary_ws.cell(row=total_row, column=3, value=total_infra / 1_000_000 if total_infra > 1_000_000 else total_infra / 1_000)
-                summary_ws.cell(row=total_row, column=4, value=total_rum / 1_000_000 if total_rum > 1_000_000 else total_rum / 1_000)
-                summary_ws.cell(row=total_row, column=5, value=total_rum_sr / 1_000_000 if total_rum_sr > 1_000_000 else total_rum_sr / 1_000)
-                summary_ws.cell(row=total_row, column=6, value=total_browser / 1_000_000 if total_browser > 1_000_000 else total_browser / 1_000)
-                summary_ws.cell(row=total_row, column=7, value=total_http / 1_000_000 if total_http > 1_000_000 else total_http / 1_000)
-                summary_ws.cell(row=total_row, column=8, value=total_third / 1_000_000 if total_third > 1_000_000 else total_third / 1_000)
-                summary_ws.cell(row=total_row, column=9, value=total_managed)
-
-                # Add units row
-                unit_row = total_row + 1
-                summary_ws.cell(row=unit_row, column=2, value='PiB')
-                summary_ws.cell(row=unit_row, column=3, value='M' if total_infra > 1_000_000 else 'K')
-                summary_ws.cell(row=unit_row, column=4, value='M' if total_rum > 1_000_000 else 'K')
-                summary_ws.cell(row=unit_row, column=5, value='M' if total_rum_sr > 1_000_000 else 'K')
-                summary_ws.cell(row=unit_row, column=6, value='M' if total_browser > 1_000_000 else 'K')
-                summary_ws.cell(row=unit_row, column=7, value='M' if total_http > 1_000_000 else 'K')
-                summary_ws.cell(row=unit_row, column=8, value='M' if total_third > 1_000_000 else 'K')
 
                 # Style totals and units
                 bold_font = Font(bold=True)
@@ -302,9 +384,10 @@ class ChargebackExcelExporter:
                     cell.font = bold_font
                     cell.alignment = Alignment(horizontal='center')
                     
-                    if col > 1:  # Skip DG column
-                        unit_cell = summary_ws.cell(row=unit_row, column=col)
-                        unit_cell.alignment = Alignment(horizontal='center')
+
+                # Add totals row after a blank line
+                last_row = len(summary_data) + 2  # +2 for header and blank line
+                total_row = last_row + 1
 
                 # Set column widths for summary sheet
                 summary_ws.column_dimensions['A'].width = 20  # DG name

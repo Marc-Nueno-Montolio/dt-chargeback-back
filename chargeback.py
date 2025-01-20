@@ -63,6 +63,7 @@ class ChargebackReport:
         sorted_dg_names = ['DIGIT C'] + [dg for dg in dg_names if dg not in priority_dgs]
 
         # Update dg_names to the sorted list
+        
         dg_names = sorted_dg_names
 
         logger.info(f"Starting chargeback report generation for DGs: {dg_names}")
@@ -624,7 +625,20 @@ class ChargebackReport:
         """
         Calculates usage and entity totals at all levels (Report, DG, IS).
         Handles both assigned and unassigned entities.
-        Only includes usage for entities marked as billed=True.
+        
+        For Assigned entities: 
+        - If entity is billable, sum to DG totals
+        - If entity is not billable, sum to DIGIT C totals
+        
+        For Unassigned entities:
+        - If entity is billable, sum to DG totals
+        - If entity is not billable, sum to DIGIT C totals
+        
+        For DIGIT C:
+        - Sum all non-billable entities from other DGs
+        - Sum all its own entities regardless of billable status
+        
+        Then calculate totals for each DG and Report, and unassigned totals
         
         Args:
             report: The report structure to calculate totals for
@@ -641,6 +655,9 @@ class ChargebackReport:
         report['unassigned_totals']['entities'] = {entity_type: 0 for entity_type in self.entity_types}
         report['unassigned_totals']['managed_hosts'] = 0
 
+        # Find DIGIT C in report
+        digit_c_index = next((i for i, dg in enumerate(report['dgs']) if dg['name'] == 'DIGIT C'), None)
+
         for dg in report['dgs']:
             dg_totals = {usage_type: 0.0 for usage_type in self.usage_types}
             dg_entity_totals = {entity_type: 0 for entity_type in self.entity_types}
@@ -650,91 +667,123 @@ class ChargebackReport:
             for is_system in dg['data']['information_systems']:
                 is_totals = {usage_type: 0.0 for usage_type in self.usage_types}
                 is_entity_totals = {entity_type: 0 for entity_type in self.entity_types}
+                is_managed_hosts = 0
                 
                 # Sum host usage and count
                 hosts = is_system['data']['entities'].get('hosts', [])
                 for host in hosts:
-                    if host.get('billed', False):  # Only count if billed
-                        for usage_type, value in host['usage'].items():
-                            is_totals[usage_type] += value
-                            dg_totals[usage_type] += value
+                    if host.get('monitoring_mode') == 'INFRASTRUCTURE':
+                        # Infrastructure hosts are always charged to DIGIT C unless cloud-based
+                        if host.get('billed', False) and not host.get('cloud_based', False):
+                            if digit_c_index is not None and dg['name'] != 'DIGIT C':
+                                report['dgs'][digit_c_index]['data']['totals']['usage']['infra'] += host['usage'].get('infra', 0.0)
+                            else:
+                                is_totals['infra'] += host['usage'].get('infra', 0.0)
+                                dg_totals['infra'] += host['usage'].get('infra', 0.0)
+                                report['totals']['usage']['infra'] += host['usage'].get('infra', 0.0)
+                        
+                    elif host.get('monitoring_mode') == 'FULL_STACK':
+                        # Fullstack hosts are charged to their DG
+                        if host.get('billed', False):
+                            is_totals['fullstack'] += host['usage'].get('fullstack', 0.0)
+                            dg_totals['fullstack'] += host['usage'].get('fullstack', 0.0)
+                            report['totals']['usage']['fullstack'] += host['usage'].get('fullstack', 0.0)
+                            
                     if host.get('managed', False):
+                        is_managed_hosts += 1
                         dg_managed_hosts += 1
+                        
                 is_entity_totals['hosts'] = len(hosts)
                 dg_entity_totals['hosts'] += len(hosts)
+                report['totals']['entities']['hosts'] += len(hosts)
                 
                 # Sum application usage and count
                 apps = is_system['data']['entities'].get('applications', [])
                 for app in apps:
-                    if app.get('billed', False):  # Only count if billed
-                        for usage_type, value in app['usage'].items():
+                    for usage_type, value in app['usage'].items():
+                        if app.get('billed', False):
                             is_totals[usage_type] += value
                             dg_totals[usage_type] += value
+                            report['totals']['usage'][usage_type] += value
+                        elif digit_c_index is not None and dg['name'] != 'DIGIT C':
+                            report['dgs'][digit_c_index]['data']['totals']['usage'][usage_type] += value
                 is_entity_totals['applications'] = len(apps)
                 dg_entity_totals['applications'] += len(apps)
+                report['totals']['entities']['applications'] += len(apps)
                         
                 # Sum synthetic usage and count
                 synthetics = is_system['data']['entities'].get('synthetics', [])
                 for synthetic in synthetics:
-                    if synthetic.get('billed', False):  # Only count if billed
-                        for usage_type, value in synthetic['usage'].items():
+                    for usage_type, value in synthetic['usage'].items():
+                        if synthetic.get('billed', False):
                             is_totals[usage_type] += value
                             dg_totals[usage_type] += value
+                            report['totals']['usage'][usage_type] += value
+                        elif digit_c_index is not None and dg['name'] != 'DIGIT C':
+                            report['dgs'][digit_c_index]['data']['totals']['usage'][usage_type] += value
                 is_entity_totals['synthetics'] = len(synthetics)
                 dg_entity_totals['synthetics'] += len(synthetics)
+                report['totals']['entities']['synthetics'] += len(synthetics)
                         
                 is_system['data']['usage'] = is_totals
+                is_system['data']['managed_hosts'] = is_managed_hosts
 
-            
             # Add unassigned entities to DG totals
             unassigned = dg['data']['unassigned_entities']['entities']
-            unassigned_usage = {usage_type: 0.0 for usage_type in self.usage_types}
             
             # Sum unassigned host usage and count
             unassigned_hosts = unassigned.get('hosts', [])
             for host in unassigned_hosts:
-                if host.get('billed', False):  # Only count if billed
-                    for usage_type, value in host['usage'].items():
-                        unassigned_usage[usage_type] += value
-                        dg_totals[usage_type] += value
+                if host.get('monitoring_mode') == 'INFRASTRUCTURE':
+                    if host.get('billed', False) and not host.get('cloud_based', False):
+                        if digit_c_index is not None and dg['name'] != 'DIGIT C':
+                            report['dgs'][digit_c_index]['data']['totals']['usage']['infra'] += host['usage'].get('infra', 0.0)
+                        else:
+                            dg_totals['infra'] += host['usage'].get('infra', 0.0)
+                            report['unassigned_totals']['usage']['infra'] += host['usage'].get('infra', 0.0)
+                elif host.get('monitoring_mode') == 'FULL_STACK':
+                    if host.get('billed', False):
+                        dg_totals['fullstack'] += host['usage'].get('fullstack', 0.0)
+                        report['unassigned_totals']['usage']['fullstack'] += host['usage'].get('fullstack', 0.0)
+                        
                 if host.get('managed', False):
                     dg_managed_hosts += 1
+                    
             dg_entity_totals['hosts'] += len(unassigned_hosts)
+            report['unassigned_totals']['entities']['hosts'] += len(unassigned_hosts)
                     
             # Sum unassigned application usage and count
             unassigned_apps = unassigned.get('applications', [])
             for app in unassigned_apps:
-                if app.get('billed', False):  # Only count if billed
-                    for usage_type, value in app['usage'].items():
+                for usage_type, value in app['usage'].items():
+                    if app.get('billed', False):
                         dg_totals[usage_type] += value
+                        report['unassigned_totals']['usage'][usage_type] += value
+                    elif digit_c_index is not None and dg['name'] != 'DIGIT C':
+                        report['dgs'][digit_c_index]['data']['totals']['usage'][usage_type] += value
             dg_entity_totals['applications'] += len(unassigned_apps)
+            report['unassigned_totals']['entities']['applications'] += len(unassigned_apps)
                     
             # Sum unassigned synthetic usage and count
             unassigned_synthetics = unassigned.get('synthetics', [])
             for synthetic in unassigned_synthetics:
-                if synthetic.get('billed', False):  # Only count if billed
-                    for usage_type, value in synthetic['usage'].items():
+                for usage_type, value in synthetic['usage'].items():
+                    if synthetic.get('billed', False):
                         dg_totals[usage_type] += value
+                        report['unassigned_totals']['usage'][usage_type] += value
+                    elif digit_c_index is not None and dg['name'] != 'DIGIT C':
+                        report['dgs'][digit_c_index]['data']['totals']['usage'][usage_type] += value
             dg_entity_totals['synthetics'] += len(unassigned_synthetics)
+            report['unassigned_totals']['entities']['synthetics'] += len(unassigned_synthetics)
             
             dg['data']['totals']['usage'] = dg_totals
             dg['data']['totals']['entities'] = dg_entity_totals
             dg['data']['totals']['managed_hosts'] = dg_managed_hosts
-            
-            # Add DG totals to either report totals or unassigned totals based on DG name
-            if dg['name'] == 'Unassigned':
-                for usage_type, value in dg_totals.items():
-                    report['unassigned_totals']['usage'][usage_type] += value
-                for entity_type, count in dg_entity_totals.items():
-                    report['unassigned_totals']['entities'][entity_type] += count
-                report['unassigned_totals']['managed_hosts'] += dg_managed_hosts
-            else:
-                for usage_type, value in dg_totals.items():
-                    report['totals']['usage'][usage_type] += value
-                for entity_type, count in dg_entity_totals.items():
-                    report['totals']['entities'][entity_type] += count
-                report['totals']['managed_hosts'] += dg_managed_hosts
-            
+            report['totals']['managed_hosts'] += dg_managed_hosts
+
+            # Add DG totals to global totals
+            for usage_type in self.usage_types:
+                report['totals']['usage'][usage_type] += dg_totals[usage_type]
         return report
 
     def _determine_entity_type(self, usage_type: str) -> str:

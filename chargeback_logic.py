@@ -119,13 +119,13 @@ def host_is_billable(host:Host)->bool:
     return billable
 
 def app_is_billable(application:Application)->bool:
-    return True
+
     # If any IS is managed, application is not charged to the corresponding DG but to DIGIT C
     billable = False if any(is_.managed for is_ in application.information_systems) else True
     return billable
 
 def synthetic_is_billable(synthetic:Synthetic)->bool:
-    return True
+
     # If any IS is managed, synthetic is not charged to the corresponding DG but to DIGIT C
     if any(is_.managed for is_ in synthetic.information_systems):
         return False
