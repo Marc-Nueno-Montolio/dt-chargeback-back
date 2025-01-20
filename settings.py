@@ -1,9 +1,22 @@
 import os
 import logging
-
+import logging
+from logging.handlers import RotatingFileHandler
 # Logging Settings
 LOG_FORMAT= "%(asctime)s - %(levelname)s - %(message)s"
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
+
+
+
+# Set up logging to file
+log_handler = RotatingFileHandler('chargeback.log', backupCount=5)
+log_handler.setFormatter(logging.Formatter(LOG_FORMAT))
+log_handler.setLevel(LOG_LEVEL)
+
+# Get root logger and add file handler
+root_logger = logging.getLogger()
+root_logger.addHandler(log_handler)
+root_logger.setLevel(LOG_LEVEL)
 
 # Dynatrace API Settings
 BASE_URL = "https://apmactivegate.tech.ec.europa.eu/e/39a3e95b-5423-482c-879b-99ef235dffeb"

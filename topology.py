@@ -15,8 +15,8 @@ import logging
 import re
 from chargeback_logic import host_is_managed, is_is_managed, host_is_cloud_based
 
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from settings import root_logger
+logger = root_logger
 
 
 

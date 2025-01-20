@@ -9,6 +9,10 @@ from export_2 import ChargebackExcelExporter as ExcelExporter2
 from settings import SQLALCHEMY_DATABASE_URL
 from topology import refresh_dgs_task, refresh_hosts_task, refresh_applications_task, refresh_synthetics_task
 
+from settings import root_logger
+logger = root_logger
+
+
 # Create the database tables
 from models import Base
 Base.metadata.create_all(bind=engine)

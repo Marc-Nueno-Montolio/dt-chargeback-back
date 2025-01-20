@@ -8,8 +8,8 @@ import pandas as pd
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
-logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
-logger = logging.getLogger(__name__)
+from settings import root_logger
+logger = root_logger
 
 from datetime import datetime
 
@@ -302,13 +302,13 @@ class ChargebackExcelExporter:
 
                     logger.debug(f"DG {dg_name} raw totals: {totals}")
 
-                    fullstack = totals['fullstack']
-                    infra = totals['infra'] 
-                    rum = totals['rum']
-                    rum_sr = totals['rum_with_sr']
-                    browser = totals['browser_monitor']
-                    http = totals['http_monitor']
-                    third = totals['3rd_party_monitor']
+                    fullstack = totals.get('fullstack', 0)
+                    infra = totals.get('infra', 0)
+                    rum = totals.get('rum', 0) 
+                    rum_sr = totals.get('rum_with_sr', 0)
+                    browser = totals.get('browser_monitor', 0)
+                    http = totals.get('http_monitor', 0)
+                    third = totals.get('3rd_party_monitor', 0)
 
                     total_fullstack += fullstack
                     total_infra += infra
@@ -333,20 +333,19 @@ class ChargebackExcelExporter:
                         managed_hosts
                     ])
 
-                # Add DIGIT C totals if not already included
-                if 'DIGIT C' not in [row[0] for row in summary_data]:
-                    digit_c_totals = dg_totals['DIGIT C']
-                    summary_data.append([
-                        'DIGIT C',
-                        digit_c_totals['fullstack'],
-                        digit_c_totals['infra'],
-                        digit_c_totals['rum'],
-                        digit_c_totals['rum_sr'],
-                        digit_c_totals['browser'],
-                        digit_c_totals['http'],
-                        digit_c_totals['third'],
-                        digit_c_totals['managed']
-                    ])
+
+                # Add report totals row
+                summary_data.append([
+                    'Total',
+                    report['totals']['usage']['fullstack'],
+                    report['totals']['usage']['infra'],
+                    report['totals']['usage']['rum'],
+                    report['totals']['usage']['rum_with_sr'], 
+                    report['totals']['usage']['browser_monitor'],
+                    report['totals']['usage']['http_monitor'],
+                    report['totals']['usage']['3rd_party_monitor'],
+                    report['totals']['managed_hosts']
+                ])
 
                 logger.info(f"Final totals: Fullstack={total_fullstack}, Infra={total_infra}, RUM={total_rum}, RUM SR={total_rum_sr}, Browser={total_browser}, HTTP={total_http}, Third={total_third}, Managed={total_managed}")
 
@@ -372,27 +371,6 @@ class ChargebackExcelExporter:
                     cell.fill = header_fill
                     cell.font = header_font
 
-                # Add totals row after a blank line
-                last_row = len(summary_data) + 2  # +2 for header and blank line
-                total_row = last_row + 1
-
-
-                # Style totals and units
-                bold_font = Font(bold=True)
-                for col in range(1, 10):
-                    cell = summary_ws.cell(row=total_row, column=col)
-                    cell.font = bold_font
-                    cell.alignment = Alignment(horizontal='center')
-                    
-
-                # Add totals row after a blank line
-                last_row = len(summary_data) + 2  # +2 for header and blank line
-                total_row = last_row + 1
-
-                # Set column widths for summary sheet
-                summary_ws.column_dimensions['A'].width = 20  # DG name
-                for col in range(ord('B'), ord('I')+1):
-                    summary_ws.column_dimensions[chr(col)].width = 15
 
             logger.info(f"Excel report successfully exported to {output}")
             

@@ -2,8 +2,8 @@ from models import *
 import logging
 from settings import MANAGED_HOST_TAGS_INPUT_FILE, MANAGED_IS_NAMES_INPUT_FILE, LOG_LEVEL
 
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from settings import root_logger
+logger = root_logger
 
 
 managed_host_tags=[]

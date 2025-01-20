@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session
 from typing import Dict
 import logging
 
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from settings import root_logger
+logger = root_logger
 
 
 
@@ -52,6 +52,7 @@ def retrieve_hosts_fullstack_usage(dgs=[]):
                 futures.append(future)
                 future_to_dg[future] = dg
                 logger.debug(f'Started query for DG: {dg}')
+
         # Process completed futures and start new tasks as threads become available
         while futures:
             for future in as_completed(futures):
@@ -59,6 +60,12 @@ def retrieve_hosts_fullstack_usage(dgs=[]):
                 dg = future_to_dg[future]
                 try:
                     result = future.result()
+                    if not result:
+                        logger.warning(f'FS usage query for {dg} returned no datapoints - retrying query')
+                        # Retry the query once
+                        result = query_host_full_stack_usage(dg, "-30d", "now")
+                        if not result:
+                            logger.error(f'FS usage query retry for {dg} also returned no datapoints')
                     results.extend(result)  # Concatenate results
                     logger.info(f'FS usage query for {dg} Completed (found {len(result)} FS datapoints)')
                 except Exception as exc:
@@ -70,7 +77,7 @@ def retrieve_hosts_fullstack_usage(dgs=[]):
                     future = executor.submit(query_host_full_stack_usage, dg, "-30d", "now")
                     futures.append(future)
                     future_to_dg[future] = dg
-                    logger.debug(f'Started query for DG: {dg}')
+                    logger.debug(f'Started FS query for DG: {dg}')
 
     return results
 
@@ -94,7 +101,7 @@ def retrieve_hosts_infra_usage(dgs=[]):
                 future = executor.submit(query_host_infra_usage, dg, "-30d", "now")
                 futures.append(future)
                 future_to_dg[future] = dg
-                logger.debug(f'Started query for DG: {dg}')
+                logger.debug(f'Started INFRA query for DG: {dg}')
 
         # Process completed futures and start new tasks as threads become available
         while futures:
@@ -103,6 +110,12 @@ def retrieve_hosts_infra_usage(dgs=[]):
                 dg = future_to_dg[future]
                 try:
                     result = future.result()
+                    if not result:
+                        logger.warning(f'INFRA usage query for {dg} returned no datapoints - retrying query')
+                        # Retry the query once
+                        result = query_host_infra_usage(dg, "-30d", "now")
+                        if not result:
+                            logger.error(f'INFRA usage query retry for {dg} also returned no datapoints')
                     results.extend(result)  # Concatenate results
                     logger.info(f'INFRA usage query for {dg} Completed (found {len(result)} INFRA datapoints)')
                 except Exception as exc:
@@ -111,7 +124,7 @@ def retrieve_hosts_infra_usage(dgs=[]):
                 # Start a new task if there are more DGs to process
                 if not task_queue.empty():
                     dg = task_queue.get()
-                    future = executor.submit(query_host_full_stack_usage, dg, "-30d", "now")
+                    future = executor.submit(query_host_infra_usage, dg, "-30d", "now")
                     futures.append(future)
                     future_to_dg[future] = dg
                     logger.debug(f'Started query for DG: {dg}')

@@ -3,8 +3,8 @@ import logging
 import os
 import requests
 
-logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+from settings import root_logger
+logger = root_logger
 
 
 def get_host_tags():
@@ -195,7 +195,7 @@ def query_metric(metricSelector=None, resolution="1h", data_from="-30d", data_to
     Returns:
         dict: JSON response containing host data.
     """
-    logger.debug("Starting metrics API query to Dynatrace")
+    #logger.debug("Starting metrics API query to Dynatrace")
     
     url = f"{BASE_URL}/api/v2/metrics/query"
     params = {
@@ -209,8 +209,8 @@ def query_metric(metricSelector=None, resolution="1h", data_from="-30d", data_to
         "User-Agent": USER_AGENT
     }
     
-    logger.debug(f"Making initial request to {url}")
-    logger.debug(f"Using params: {params}")
+    #logger.debug(f"Making initial request to {url}")
+    #logger.debug(f"Using params: {params}")
     
     response = requests.get(url, headers=headers, params=params)
     
