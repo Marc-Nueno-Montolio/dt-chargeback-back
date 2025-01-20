@@ -5,7 +5,7 @@ from settings import LOG_FORMAT, LOG_LEVEL
 from typing import Dict
 import logging
 import pandas as pd
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
@@ -207,19 +207,46 @@ class ChargebackExcelExporter:
 
                 # Create Summary sheet
                 summary_data = []
+                total_fullstack = 0
+                total_infra = 0
+                total_rum = 0
+                total_rum_sr = 0
+                total_browser = 0
+                total_http = 0
+                total_third = 0
+                total_managed = 0
+
                 for dg in sorted_dgs:
                     totals = dg['data']['totals']
                     usage = totals['usage']
+                    fullstack = usage.get('fullstack', 0)
+                    infra = usage.get('infra', 0)
+                    rum = usage.get('rum', 0)
+                    rum_sr = usage.get('rum_with_sr', 0)
+                    browser = usage.get('browser_monitor', 0)
+                    http = usage.get('http_monitor', 0)
+                    third = usage.get('3rd_party_monitor', 0)
+                    managed = totals.get('managed_hosts', 0)
+
+                    total_fullstack += fullstack
+                    total_infra += infra
+                    total_rum += rum
+                    total_rum_sr += rum_sr
+                    total_browser += browser
+                    total_http += http
+                    total_third += third
+                    total_managed += managed
+
                     summary_data.append([
                         dg['name'],
-                        usage.get('fullstack', 0),
-                        usage.get('infra', 0),
-                        usage.get('rum', 0),
-                        usage.get('rum_with_sr', 0),
-                        usage.get('browser_monitor', 0),
-                        usage.get('http_monitor', 0),
-                        usage.get('3rd_party_monitor', 0),
-                        totals.get('managed_hosts', 0)
+                        fullstack / (1024 * 1024),  # Convert to PiB
+                        infra / 1024,  # Convert to GiB
+                        rum / 1_000_000 if rum > 1_000_000 else rum / 1_000,  # Convert to M or K
+                        rum_sr / 1_000_000 if rum_sr > 1_000_000 else rum_sr / 1_000,
+                        browser / 1_000_000 if browser > 1_000_000 else browser / 1_000,
+                        http / 1_000_000 if http > 1_000_000 else http / 1_000,
+                        third / 1_000_000 if third > 1_000_000 else third / 1_000,
+                        managed
                     ])
 
                 summary_headers = [
@@ -243,6 +270,41 @@ class ChargebackExcelExporter:
                 for cell in summary_ws[1]:
                     cell.fill = header_fill
                     cell.font = header_font
+
+                # Add totals row after a blank line
+                last_row = len(summary_data) + 2  # +2 for header and blank line
+                total_row = last_row + 1
+
+                summary_ws.cell(row=total_row, column=1, value='TOTAL')
+                summary_ws.cell(row=total_row, column=2, value=total_fullstack / (1024 * 1024))
+                summary_ws.cell(row=total_row, column=3, value=total_infra / 1_000_000 if total_infra > 1_000_000 else total_infra / 1_000)
+                summary_ws.cell(row=total_row, column=4, value=total_rum / 1_000_000 if total_rum > 1_000_000 else total_rum / 1_000)
+                summary_ws.cell(row=total_row, column=5, value=total_rum_sr / 1_000_000 if total_rum_sr > 1_000_000 else total_rum_sr / 1_000)
+                summary_ws.cell(row=total_row, column=6, value=total_browser / 1_000_000 if total_browser > 1_000_000 else total_browser / 1_000)
+                summary_ws.cell(row=total_row, column=7, value=total_http / 1_000_000 if total_http > 1_000_000 else total_http / 1_000)
+                summary_ws.cell(row=total_row, column=8, value=total_third / 1_000_000 if total_third > 1_000_000 else total_third / 1_000)
+                summary_ws.cell(row=total_row, column=9, value=total_managed)
+
+                # Add units row
+                unit_row = total_row + 1
+                summary_ws.cell(row=unit_row, column=2, value='PiB')
+                summary_ws.cell(row=unit_row, column=3, value='M' if total_infra > 1_000_000 else 'K')
+                summary_ws.cell(row=unit_row, column=4, value='M' if total_rum > 1_000_000 else 'K')
+                summary_ws.cell(row=unit_row, column=5, value='M' if total_rum_sr > 1_000_000 else 'K')
+                summary_ws.cell(row=unit_row, column=6, value='M' if total_browser > 1_000_000 else 'K')
+                summary_ws.cell(row=unit_row, column=7, value='M' if total_http > 1_000_000 else 'K')
+                summary_ws.cell(row=unit_row, column=8, value='M' if total_third > 1_000_000 else 'K')
+
+                # Style totals and units
+                bold_font = Font(bold=True)
+                for col in range(1, 10):
+                    cell = summary_ws.cell(row=total_row, column=col)
+                    cell.font = bold_font
+                    cell.alignment = Alignment(horizontal='center')
+                    
+                    if col > 1:  # Skip DG column
+                        unit_cell = summary_ws.cell(row=unit_row, column=col)
+                        unit_cell.alignment = Alignment(horizontal='center')
 
                 # Set column widths for summary sheet
                 summary_ws.column_dimensions['A'].width = 20  # DG name
