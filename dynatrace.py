@@ -239,7 +239,7 @@ def query_host_full_stack_usage(dg=None, data_from="-30d", data_to="now"):
     result = []
     for datapoint in data:
         result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]/4} # Data is reported every 15 minutes --> divide by 4 to get hourly usage
+                       'value': datapoint['values'][0]}
                     )
     return result
 
@@ -260,7 +260,7 @@ def query_host_infra_usage(dg=None, data_from="-30d", data_to="now"):
     result = []
     for datapoint in data:
         result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]/4} # Data is reported every 15 minutes --> divide by 4 to get hourly usage
+                       'value': datapoint['values'][0]}
                     )
     return result
 
@@ -388,7 +388,7 @@ def query_unassigned_host_full_stack_usage(data_from="-30d", data_to="now"):
     result = []
     for datapoint in data:
         result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]/4} # Data is reported every 15 minutes --> divide by 4 to get hourly usage
+                       'value': datapoint['values'][0]}
                     )
     return result
 
@@ -409,7 +409,7 @@ def query_unassigned_host_infra_usage(data_from="-30d", data_to="now"):
     result = []
     for datapoint in data:
         result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]/4} # Data is reported every 15 minutes --> divide by 4 to get hourly usage
+                       'value': datapoint['values'][0]}
                     )
     return result
 

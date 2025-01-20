@@ -88,32 +88,20 @@ def application_is_managed(application_data:dict)->bool:
 # However, if the entity itself is managed, it is not billable
 
 def host_is_billable(host:Host)->bool:
-    """
-    Determine if a host should be billed.
-    A host is not billable if it is managed.
-    """
     billable = False if host.managed  else True
     return billable
 
 def app_is_billable(application:Application)->bool:
-    """
-    Determine if an application should be billed.
-    An application is not billable if it is managed and if any of the information systems it belongs to are managed.
-    """
-    billable = False if application.managed and any(is_.managed for is_ in application.information_systems) else True
+    billable = False if any(is_.managed for is_ in application.information_systems) else True
     return billable
 
 def synthetic_is_billable(synthetic:Synthetic)->bool:
-    """
-    Determine if a synthetic monitor should be billed.
-    A synthetic monitor is billable only if it's not managed and the information systems it belongs to are not managed. whenever any is is managed, the synthetic is not billable
-    """
-    # If synthetic itself is managed, it's not billable
-    if synthetic.managed:
-        return False
-    
     # If any IS is managed, synthetic is not billable
     if any(is_.managed for is_ in synthetic.information_systems):
         return False
     
     return True
+
+
+
+
