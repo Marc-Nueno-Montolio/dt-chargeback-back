@@ -7,7 +7,7 @@ from typing import Dict, List
 import logging
 from chargeback_logic import  *
 
-logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)
+logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
 class ChargebackReport:
@@ -59,8 +59,8 @@ class ChargebackReport:
         
         # Process first DIGIT_C and DIGIT, if they are in dg_names, move them to first positions, otherwise, add them
         # Ensure DIGIT_C and DIGIT are processed first (We add them even if they were not requested since most managed hosts are hosted there)
-        priority_dgs = ['DIGIT C', 'DIGIT']
-        sorted_dg_names = ['DIGIT C', 'DIGIT'] + [dg for dg in dg_names if dg not in priority_dgs]
+        priority_dgs = ['DIGIT C']
+        sorted_dg_names = ['DIGIT C'] + [dg for dg in dg_names if dg not in priority_dgs]
 
         # Update dg_names to the sorted list
         dg_names = sorted_dg_names
@@ -72,7 +72,7 @@ class ChargebackReport:
             # First collect all usage data from Dynatrace
             logger.debug("Initiating usage data collection from Dynatrace")
             usage_data = await self._collect_usage_data(dg_names)
-            logger.info(f"Successfully collected usage data for {len(usage_data)} usage types")
+            logger.info(f"Successfully collected usage data for {len(usage_data)} capabilities")
 
             # Initialize report structure with zeroed totals
             report = {
@@ -152,13 +152,16 @@ class ChargebackReport:
                         for dt_id, value in usage_values.items():
                             # Skip if already processed to avoid duplicates
                             if dt_id in self.processed_entities:
-                                logger.debug(f"Entity {dt_id} already processed as unassigned - Skipping")
+                                logger.debug(f"Entity {entity_type[:-1]} {dt_id} already processed as unassigned - Skipping")
                                 continue
                             else:
+                                
                                 entity_data = {
                                     'dt_id': dt_id,
-                                    'usage': {usage_type: value},
-                                    'tagged_dgs': []
+                                    'name': value['name'],
+                                    'usage': {usage_type: value['value']},
+                                    'tagged_dgs': [],
+                                    'billed': True
                                 }
                                 unassigned_dg['data']['unassigned_entities']['entities'][entity_type].append(entity_data)
                                 self.processed_entities.add(dt_id)
@@ -174,6 +177,9 @@ class ChargebackReport:
             logger.info(f"Final report contains data for {len(report['dgs'])} DGs")
             logger.debug("Report totals calculated successfully")
 
+            
+            # remove dgs that are not in dg_names, keeping Unassigned if process_unassigned is True
+            report['dgs'] = [dg for dg in report['dgs'] if dg['name'] in dg_names or (self.process_unassigned and dg['name'] == 'Unassigned')]
             return report
 
         except Exception as e:
@@ -245,7 +251,7 @@ class ChargebackReport:
             if entity_type in self.process_entity_types:
                 logger.debug(f"Collecting unassigned {usage_type} usage data")
                 data = collector()
-                usage_data[usage_type] = {item['dt_id']: item['value'] for item in data}
+                usage_data[usage_type] = {item['dt_id']: {'value': item['value'], 'name': item['name']} for item in data}
                 logger.info(f"Collected {len(data)} unassigned {usage_type} usage records")
         
         return usage_data
@@ -313,23 +319,20 @@ class ChargebackReport:
         fullstack_usage = usage_data['fullstack'].get(host.dt_id, 0.0)
         infra_usage = usage_data['infra'].get(host.dt_id, 0.0)
         
-        
-                
         # Get all DGs this host belongs to
         dgs = [dg.name for dg in host.dgs]
         logger.debug(f"Host {host.name} belongs to DGs: {dgs}")
         logger.debug(f"Host {host.name} usage - Fullstack: {fullstack_usage}, Infrastructure: {infra_usage}")
         
         tagged_dgs = [dg.name for dg in host.dgs]
-        processed_dgs=host.dgs
+        processed_dgs = host.dgs
         charged_dgs = []
         
-        
-        # Apply DG priority rules - DIGIT C > DIGIT > Others
-        if any(dg.name == 'DIGIT C' for dg in host.dgs):
-            charged_dgs = [next(dg for dg in host.dgs if dg.name == 'DIGIT C')]
-        elif any(dg.name == 'DIGIT' for dg in host.dgs):
-            charged_dgs = [next(dg for dg in host.dgs if dg.name == 'DIGIT')]
+        # Host should be charged to DIGIT C if:
+        # 1. It has DIGIT C as a DG, or
+        # 2. It's not billable in any of its assigned DGs
+        if any(dg.name == 'DIGIT C' for dg in host.dgs) or not any(host_is_billable(host) for dg in host.dgs):
+            charged_dgs = [next((dg for dg in processed_dgs if dg.name == 'DIGIT C'), processed_dgs[0])]
         else:
             charged_dgs = host.dgs
 
@@ -346,26 +349,16 @@ class ChargebackReport:
             processed_dgs = charged_dgs
         
         # Process each DG the host belongs to
-        
         for dg in processed_dgs:
-            usage = {}
-            not_billable_in_this_dg = False
             logger.debug(f"Processing dg {dg.name}")
-            if dg in charged_dgs:
-                usage = {
-                    'fullstack': (fullstack_usage / len(charged_dgs)) if fullstack_usage > 0 else 0.0,
-                    'infra': (infra_usage / len(charged_dgs)) if infra_usage > 0 and fullstack_usage == 0 else 0.0
-                }
-            else:
-                not_billable_in_this_dg = True
-                usage = {
-                    'fullstack': 0.0,
-                    'infra': 0.0
-                }
+            
+            # Always set actual usage values
+            usage = {
+                'fullstack': fullstack_usage / len(charged_dgs) if fullstack_usage > 0 else 0.0,
+                'infra': infra_usage / len(charged_dgs) if infra_usage > 0 and fullstack_usage == 0 else 0.0
+            }
             
             logger.debug(f"Host {host.name} consumes  - Fullstack: {fullstack_usage}, Infrastructure: {infra_usage} in DG {dg.name}")
-
-            
 
             host_data = {
                 'id': host.id,
@@ -373,7 +366,8 @@ class ChargebackReport:
                 'dt_id': host.dt_id,
                 'usage': usage,
                 'managed': host.managed,
-                'billed': host_is_billable(host) and (not not_billable_in_this_dg),
+                'cloud': host.cloud,
+                'billed': host_is_billable(host) and (dg in charged_dgs),
                 'tagged_dgs': tagged_dgs
             }            
                 
@@ -440,13 +434,10 @@ class ChargebackReport:
         processed_dgs = app.dgs
         charged_dgs = []
         
-        # Apply DG priority rules - DIGIT C > DIGIT > Others
+        # Apply DG priority rules - DIGIT C > Others
         if any(dg.name == 'DIGIT C' for dg in app.dgs):
             charged_dgs = [next(dg for dg in app.dgs if dg.name == 'DIGIT C')]
             logger.debug(f"Application {app.name} prioritized to DIGIT C")
-        elif any(dg.name == 'DIGIT' for dg in app.dgs):
-            charged_dgs = [next(dg for dg in app.dgs if dg.name == 'DIGIT')]
-            logger.debug(f"Application {app.name} prioritized to DIGIT")
         else:
             charged_dgs = app.dgs
             logger.debug(f"Application {app.name} processed for all assigned DGs")
@@ -550,13 +541,11 @@ class ChargebackReport:
         processed_dgs = synthetic.dgs
         charged_dgs = []
         
-        # Apply DG priority rules - DIGIT C > DIGIT > Others
+        # Apply DG priority rules - DIGIT C > Others
         if any(dg.name == 'DIGIT C' for dg in synthetic.dgs):
             charged_dgs = [next(dg for dg in synthetic.dgs if dg.name == 'DIGIT C')]
             logger.debug(f"Synthetic {synthetic.name} prioritized to DIGIT C")
-        elif any(dg.name == 'DIGIT' for dg in synthetic.dgs):
-            charged_dgs = [next(dg for dg in synthetic.dgs if dg.name == 'DIGIT')]
-            logger.debug(f"Synthetic {synthetic.name} prioritized to DIGIT")
+        
         else:
             charged_dgs = synthetic.dgs
             logger.debug(f"Synthetic {synthetic.name} processed for all assigned DGs")
@@ -635,6 +624,7 @@ class ChargebackReport:
         """
         Calculates usage and entity totals at all levels (Report, DG, IS).
         Handles both assigned and unassigned entities.
+        Only includes usage for entities marked as billed=True.
         
         Args:
             report: The report structure to calculate totals for
@@ -664,9 +654,10 @@ class ChargebackReport:
                 # Sum host usage and count
                 hosts = is_system['data']['entities'].get('hosts', [])
                 for host in hosts:
-                    for usage_type, value in host['usage'].items():
-                        is_totals[usage_type] += value
-                        dg_totals[usage_type] += value
+                    if host.get('billed', False):  # Only count if billed
+                        for usage_type, value in host['usage'].items():
+                            is_totals[usage_type] += value
+                            dg_totals[usage_type] += value
                     if host.get('managed', False):
                         dg_managed_hosts += 1
                 is_entity_totals['hosts'] = len(hosts)
@@ -675,18 +666,20 @@ class ChargebackReport:
                 # Sum application usage and count
                 apps = is_system['data']['entities'].get('applications', [])
                 for app in apps:
-                    for usage_type, value in app['usage'].items():
-                        is_totals[usage_type] += value
-                        dg_totals[usage_type] += value
+                    if app.get('billed', False):  # Only count if billed
+                        for usage_type, value in app['usage'].items():
+                            is_totals[usage_type] += value
+                            dg_totals[usage_type] += value
                 is_entity_totals['applications'] = len(apps)
                 dg_entity_totals['applications'] += len(apps)
                         
                 # Sum synthetic usage and count
                 synthetics = is_system['data']['entities'].get('synthetics', [])
                 for synthetic in synthetics:
-                    for usage_type, value in synthetic['usage'].items():
-                        is_totals[usage_type] += value
-                        dg_totals[usage_type] += value
+                    if synthetic.get('billed', False):  # Only count if billed
+                        for usage_type, value in synthetic['usage'].items():
+                            is_totals[usage_type] += value
+                            dg_totals[usage_type] += value
                 is_entity_totals['synthetics'] = len(synthetics)
                 dg_entity_totals['synthetics'] += len(synthetics)
                         
@@ -700,9 +693,10 @@ class ChargebackReport:
             # Sum unassigned host usage and count
             unassigned_hosts = unassigned.get('hosts', [])
             for host in unassigned_hosts:
-                for usage_type, value in host['usage'].items():
-                    unassigned_usage[usage_type] += value
-                    dg_totals[usage_type] += value
+                if host.get('billed', False):  # Only count if billed
+                    for usage_type, value in host['usage'].items():
+                        unassigned_usage[usage_type] += value
+                        dg_totals[usage_type] += value
                 if host.get('managed', False):
                     dg_managed_hosts += 1
             dg_entity_totals['hosts'] += len(unassigned_hosts)
@@ -710,15 +704,17 @@ class ChargebackReport:
             # Sum unassigned application usage and count
             unassigned_apps = unassigned.get('applications', [])
             for app in unassigned_apps:
-                for usage_type, value in app['usage'].items():
-                    dg_totals[usage_type] += value
+                if app.get('billed', False):  # Only count if billed
+                    for usage_type, value in app['usage'].items():
+                        dg_totals[usage_type] += value
             dg_entity_totals['applications'] += len(unassigned_apps)
                     
             # Sum unassigned synthetic usage and count
             unassigned_synthetics = unassigned.get('synthetics', [])
             for synthetic in unassigned_synthetics:
-                for usage_type, value in synthetic['usage'].items():
-                    dg_totals[usage_type] += value
+                if synthetic.get('billed', False):  # Only count if billed
+                    for usage_type, value in synthetic['usage'].items():
+                        dg_totals[usage_type] += value
             dg_entity_totals['synthetics'] += len(unassigned_synthetics)
             
             dg['data']['totals']['usage'] = dg_totals

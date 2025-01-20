@@ -60,6 +60,8 @@ class Host(Base):
     state = Column(String)
     monitoring_mode = Column(String)
     last_updated = Column(DateTime, default=datetime.utcnow)
+    cloud = Column(Boolean, default=False)
+    other_dc = Column(Boolean, default=False)
 
     # Many-to-many relationships
     dgs = relationship("DG", secondary=host_dgs, back_populates="hosts")

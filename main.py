@@ -5,6 +5,7 @@ import asyncio
 from database import engine, get_db
 from models import DG, Host, Application, Synthetic
 from chargeback import ChargebackReport
+from export_2 import ChargebackExcelExporter as ExcelExporter2
 from settings import SQLALCHEMY_DATABASE_URL
 from topology import refresh_dgs_task, refresh_hosts_task, refresh_applications_task, refresh_synthetics_task
 
@@ -177,8 +178,7 @@ def generate(refresh_topology, dg, from_date, to_date, process_unassigned, inclu
             json.dump(report, f, indent=2)
 
     elif '.xlsx' in output:
-        from export import ChargebackExcelExporter
-        exporter = ChargebackExcelExporter()
+        exporter = ExcelExporter2()
         exporter.export_to_excel(report, output)
     
     click.echo(f"Chargeback report generated and saved to {output}")

@@ -382,13 +382,13 @@ def query_unassigned_host_full_stack_usage(data_from="-30d", data_to="now"):
                 )
             ))
         )
-        :fold(sum)
+        :fold(sum):splitBy(dt.entity.host):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -403,13 +403,13 @@ def query_unassigned_host_infra_usage(data_from="-30d", data_to="now"):
                 ))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -425,13 +425,13 @@ def query_unassigned_real_user_monitoring_usage(data_from="-30d", data_to="now")
                 in("dt.entity.application",entitySelector("type(APPLICATION)"))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -447,13 +447,13 @@ def query_unassigned_real_user_monitoring_with_sr_usage(data_from="-30d", data_t
                 in("dt.entity.application",entitySelector("type(APPLICATION)"))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -469,13 +469,13 @@ def query_unassigned_browser_monitor_usage(data_from="-30d", data_to="now"):
                 in("dt.entity.synthetic_test",entitySelector("type(~"SYNTHETIC_TEST~")"))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -491,13 +491,13 @@ def query_unassigned_http_monitor_usage(data_from="-30d", data_to="now"):
                 in("dt.entity.http_check",entitySelector("type(~"HTTP_CHECK~")"))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result
 
@@ -513,12 +513,12 @@ def query_unassigned_3rd_party_monitor_usage(data_from="-30d", data_to="now"):
                 in("dt.entity.external_synthetic_test",entitySelector("type(~"EXTERNAL_SYNTHETIC_TEST~")"))
             )
         )
-        :fold(sum)
+        :fold(sum):names
     """
     data = query_metric(metricSelector=metricSelector, resolution="1h", data_from=data_from, data_to=data_to)
     result = []
     for datapoint in data:
-        result.append({'dt_id': datapoint['dimensions'][0],
-                       'value': datapoint['values'][0]}
+        result.append({'dt_id': datapoint['dimensions'][1],
+                       'value': datapoint['values'][0], 'name': datapoint['dimensions'][0]}
                     )
     return result

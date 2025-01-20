@@ -13,7 +13,7 @@ from typing import Literal
 import json
 import logging
 import re
-from chargeback_logic import host_is_managed, is_is_managed
+from chargeback_logic import host_is_managed, is_is_managed, host_is_cloud_based
 
 logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -227,6 +227,7 @@ def update_host(db: Session, host_data: dict):
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
         
         managed = host_is_managed(host_data)
+        cloud = host_is_cloud_based(host_data)
 
         host_dict = {
             "dt_id": host_data.get("entityId"),
@@ -236,7 +237,9 @@ def update_host(db: Session, host_data: dict):
             "monitoring_mode": monitoring_mode,
             "state": host_data.get("properties", {}).get("state", ""),
             "tags": str(host_data.get("tags", [])),
-            "last_updated": datetime.utcnow()
+            "last_updated": datetime.utcnow(),
+            "cloud": cloud,
+            "other_dc": False
         }
 
         existing_host = db.query(Host).filter(Host.dt_id == host_dict["dt_id"]).first()

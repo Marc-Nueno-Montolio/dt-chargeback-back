@@ -1,5 +1,9 @@
 from models import *
-from settings import MANAGED_HOST_TAGS_INPUT_FILE, MANAGED_IS_NAMES_INPUT_FILE
+import logging
+from settings import MANAGED_HOST_TAGS_INPUT_FILE, MANAGED_IS_NAMES_INPUT_FILE, LOG_LEVEL
+
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 managed_host_tags=[]
@@ -10,6 +14,14 @@ managed_is_names=[]
 with open(MANAGED_IS_NAMES_INPUT_FILE, 'r') as file:
         for line in file:
             managed_is_names.extend(line.strip().split(','))  
+
+
+def host_is_cloud_by_tags(tags: list) -> bool:
+    """
+    Determine if a host is cloud-based based on its tags.
+    """
+    cloud_providers = {'aws', 'azure', 'gcp'}
+    return any(provider in tag['stringRepresentation'].lower() for tag in tags for provider in cloud_providers)
 
 def host_is_managed_by_tags(tags: str, managed_tags: list=managed_host_tags) -> bool:
     """
@@ -68,6 +80,12 @@ def host_is_managed(host_data:dict) -> bool:
     """
     return host_is_managed_by_tags(host_data.get("tags", []))
 
+def host_is_cloud_based(host_data:dict) -> bool:
+    """
+    Determine if a host is cloud-based based on its tags.
+    """
+    return host_is_cloud_by_tags(host_data.get("tags", []))
+
 def synthetic_is_managed(synthetic_data:dict)->bool:
     """
     Determine if a synthetic monitor is managed by DIGIT.
@@ -82,24 +100,35 @@ def application_is_managed(application_data:dict)->bool:
     """
     return False
 
-# ===== CUSTOM LOGIC FOR BILLABLE ENTITIES =====
+
+# ===== CUSTOM LOGIC FOR CHARGEBACK BILLING =====
 # These functions determine if an entity should be billed
 # An entity is billable if it or any of its information systems are managed
 # However, if the entity itself is managed, it is not billable
 
 def host_is_billable(host:Host)->bool:
-    billable = False if host.managed  else True
+    billable = False
+    if host.monitoring_mode == 'INFRASTRUCTURE':
+        # Infra consumption should always be charged to DIGIT C except when monitoring other DC ot if the host is cloud based, in that
+        # case it should be charged to the corresponding DG
+            billable = True
+
+    if host.monitoring_mode == 'FULL_STACK':
+        # Fullstack should always be charged to the corresponding DG
+        billable = True
     return billable
 
 def app_is_billable(application:Application)->bool:
+    return True
+    # If any IS is managed, application is not charged to the corresponding DG but to DIGIT C
     billable = False if any(is_.managed for is_ in application.information_systems) else True
     return billable
 
 def synthetic_is_billable(synthetic:Synthetic)->bool:
-    # If any IS is managed, synthetic is not billable
+    return True
+    # If any IS is managed, synthetic is not charged to the corresponding DG but to DIGIT C
     if any(is_.managed for is_ in synthetic.information_systems):
         return False
-    
     return True
 
 
