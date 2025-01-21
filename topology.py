@@ -222,6 +222,7 @@ def update_dg(db: Session, dg_value: str, dg_is_mapping: Dict):
 def update_host(db: Session, host_data: dict):
     """Update single host"""
     try:
+        
         memory_bytes = host_data.get("properties", {}).get("physicalMemory", 0)
         memory_gb = memory_bytes / (1024 * 1024 * 1024) if memory_bytes else None
         monitoring_mode = host_data.get("properties", {}).get("monitoringMode", "")
@@ -241,6 +242,8 @@ def update_host(db: Session, host_data: dict):
             "cloud": cloud,
             "other_dc": False
         }
+        
+        logger.debug(f"Updating host {host_dict["name"]} in DB (Managed: {managed}) ")
 
         existing_host = db.query(Host).filter(Host.dt_id == host_dict["dt_id"]).first()
         if existing_host:
@@ -271,10 +274,13 @@ def update_host(db: Session, host_data: dict):
                             host_dgs.add(dg)
                             if is_ := db.query(IS).filter(IS.name == is_name, IS.dg_id == dg.id).first():
                                 host_is.append(is_)
+                                
         # If host is managed, and IS is not managed, mark IS as managed
         for is_ in host_is:
-            if is_.managed == False:
-                is_.managed = True
+            if host_dict['managed'] == True:
+                if is_.managed == False:
+                    logger.debug(f"Marking IS {is_.name} for host {host_dict['name']} as Managed")
+                    is_.managed = True 
         host.dgs = list(host_dgs)
         host.information_systems = host_is
         db.commit()

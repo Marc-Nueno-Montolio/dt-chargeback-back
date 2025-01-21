@@ -60,7 +60,13 @@ def IS_is_managed_by_name(name: str, managed_names: list=managed_is_names) -> bo
     name_lower = name.lower().strip()
     managed_names_lower = [n.lower().strip() for n in managed_names]
     
-    return name_lower in managed_names_lower
+    managed = name_lower in managed_names_lower
+    
+    if managed:
+        logger.debug(f"IS {name} is Managed" )
+    else:
+        logger.debug(f"IS {name} is Not Managed")
+    return managed
 
 
 

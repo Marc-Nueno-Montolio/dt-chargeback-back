@@ -32,7 +32,7 @@ def get_host_tags():
         raise Exception(f"API request failed: {response.text}")
         
     data = response.json()
-    logger.debug(f"Received response data: {data}")
+    #logger.debug(f"Received response data: {data}")
     
     if "tags" in data:
         logger.info(f"Retrieved {len(data['tags'])} tags")
@@ -78,7 +78,7 @@ def get_hosts():
             raise Exception(f"API request failed: {response.text}")
             
         data = response.json()
-        logger.debug(f"Received response data: {data}")
+        #logger.debug(f"Received response data: {data}")
         
         if "totalCount" in data:
             total_count = data["totalCount"]
@@ -140,7 +140,7 @@ def get_applications():
         raise Exception(f"API request failed: {response.text}")
     
     data = response.json()
-    logger.debug(f"Received response data: {data}")
+    #logger.debug(f"Received response data: {data}")
     
     return data
 
@@ -174,7 +174,7 @@ def get_synthetics():
         
         if response.status_code == 200:
             data = response.json()
-            logger.debug(f"Received response data: {data}")
+            #logger.debug(f"Received response data: {data}")
             
             if "entities" in data:
                 # Add type to each entity
